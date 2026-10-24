@@ -1,0 +1,55 @@
+// سجل الطالب الموحّد 360°: ملف الطالب + الخلاصة الأكاديمية + العلامات + الطلبات + العقوبات + حضور القاعات + تعارض الجداول
+import { log } from '../lib/logger.js';
+import { getStudent } from './students.js';
+import { gradesFor, PASS_MARK } from './academics.js';
+import { detectScheduleConflicts } from './schedule.js';
+
+// المعدل التراكمي: متوسط أحدث محاولة معتمدة لكل مقرر موزونة بالساعات
+function gpaOf(db, studentId) {
+  const g = gradesFor(db, studentId, null, { onlyApproved: true });
+  const hrs = g.grades.reduce((s, x) => s + x.hours, 0);
+  return { gpa: g.summary.average, grades: g.grades, summary: g.summary, totalHours: hrs, earnedHours: g.grades.filter((x) => x.passed).reduce((s, x) => s + x.hours, 0) };
+}
+
+// قسم واحد معطوب (بيانات قديمة أو ناقصة) لا يُسقط السجل كله: يُسجَّل السبب ويُعاد القسم فارغاً مع تحذير
+function safe(warnings, name, fn, fallback) {
+  try { return fn(); } catch (e) {
+    if (e && e.status && e.status < 500) throw e;
+    log.warn(`record360: تعذّر قسم «${name}»`, e);
+    warnings.push(`${name} (${String(e && e.message || e).slice(0, 80)})`); return fallback;
+  }
+}
+
+export function getUnifiedStudentRecord(deps, id) {
+  const { db } = deps, student = getStudent(deps, id), sid = Number(id), warnings = [];
+  const me = safe(warnings, 'العلامات', () => gpaOf(db, sid), { gpa: null, grades: [], summary: { average: null, passed: 0 }, totalHours: 0, earnedHours: 0 });
+  // الترتيب ضمن الدفعة: الطلاب الفعّالون في البرنامج نفسه وسنة القيد نفسها، ممن لهم علامات معتمدة
+  const { scored, rank } = safe(warnings, 'الترتيب', () => {
+    const prof = db.prepare('SELECT program_id, enroll_year FROM student_profiles WHERE user_id = ?').get(sid);
+    const cohort = prof ? db.prepare(`SELECT sp.user_id uid FROM student_profiles sp WHERE sp.program_id = ? AND sp.enroll_year = ? AND sp.status = 'active'`).all(prof.program_id, prof.enroll_year) : [];
+    const sc = cohort.map((c) => ({ uid: c.uid, gpa: c.uid === sid ? me.gpa : gpaOf(db, c.uid).gpa })).filter((x) => x.gpa !== null).sort((a, b) => b.gpa - a.gpa);
+    const pos = sc.findIndex((x) => x.uid === sid);
+    return { scored: sc, rank: pos < 0 ? null : sc.filter((x) => x.gpa > sc[pos].gpa).length + 1 };
+  }, { scored: [], rank: null });
+  const failed = me.grades.filter((x) => !x.passed).length;
+  let academicAlert = null;
+  if (me.gpa !== null && me.gpa < PASS_MARK) academicAlert = { level: 'danger', label: 'إنذار أكاديمي', message: `المعدل التراكمي ${me.gpa}% أقل من حد النجاح (${PASS_MARK}%).` };
+  else if (failed) academicAlert = { level: 'warning', label: 'مقررات راسبة', message: `لدى الطالب ${failed} مقرر/مقررات لم ينجح فيها بعد.` };
+  const requests = safe(warnings, 'الطلبات', () => db.prepare(`SELECT r.id, r.no, r.status, r.created_at createdAt, st.label service FROM requests r LEFT JOIN service_types st ON st.code = r.service_code WHERE r.student_id = ? ORDER BY r.created_at DESC LIMIT 20`).all(sid), []);
+  const holds = safe(warnings, 'العقوبات', () => db.prepare('SELECT id, hold_type type, note, created_at createdAt FROM student_holds WHERE student_id = ? AND active = 1 ORDER BY id DESC').all(sid), []);
+  const hallLogs = safe(warnings, 'حضور القاعات', () => db.prepare('SELECT id, kind, subject, hall, entered_at enteredAt, exited_at exitedAt FROM hall_logs WHERE student_id = ? ORDER BY entered_at DESC LIMIT 10').all(sid), []);
+  const staffGrades = safe(warnings, 'جدول العلامات', () => gradesFor(db, sid, null).grades, []);
+  const scheduleConflicts = safe(warnings, 'تعارض الجداول', () => detectScheduleConflicts(db, sid), { studentId: sid, level: null, checkedCourses: 0, withoutSchedule: 0, conflicts: [] });
+  // مقررات الطالب: كل مقررات برنامجه حتى سنته الحالية مع علامته (إن وُجدت) وجدول محاضراته؛ فتظهر المواد حتى قبل إدخال أي علامة
+  const courses = safe(warnings, 'المقررات', () => {
+    const p = db.prepare('SELECT program_id, study_level FROM student_profiles WHERE user_id = ?').get(sid); if (!p) return [];
+    const cs = db.prepare('SELECT id, name, code, hours, level, semester, instructor FROM courses WHERE program_id = ? AND active = 1 AND level <= ? ORDER BY level, semester, name').all(p.program_id, p.study_level || 1);
+    const best = new Map(); for (const g of staffGrades) if (g.courseId != null) best.set(g.courseId, g);
+    return cs.map((c) => { const g = best.get(c.id); return { id: c.id, name: c.name, code: c.code || '', hours: c.hours, level: c.level, semester: c.semester, instructor: c.instructor || '', total: g ? g.total : null, passed: g ? !!g.passed : null, year: g ? g.academicYear : '' }; });
+  }, []);
+  return {
+    student, courses,
+    academicSummary: { gpa: me.gpa, cohortRank: rank, cohortTotal: scored.length, earnedHours: me.earnedHours, totalHours: me.totalHours, passed: (me.summary || {}).passed || 0, failed, academicAlert },
+    grades: staffGrades, requests, holds, hallLogs, scheduleConflicts, warnings,
+  };
+}
