@@ -54,7 +54,7 @@ export function paintTranscript(d, doc, tpl, ctx) {
   /* ---------- الترويسة (الصفحة الأولى) ---------- */
   chrome();
   if (classic) {
-    ctr(d, 'الجمهورية العربية السورية · وزارة الداخلية', W / 2, 790, { size: 8, color: C.mu });
+    ctr(d, ctx.hdr.country, W / 2, 790, { size: 8, color: C.mu });
     d.image(W / 2 - 24, 726, 48, 58); ctr(d, v.university, W / 2, 704, { size: 20, font: 'bold', color: C.g });
     if (v.faculty) ctr(d, v.faculty, W / 2, 684, { size: 12, font: 'bold', color: C.ink });
     d.stroke(C.au); d.line(150, 672, 445, 672, 1.2); d.fill(C.au); d.poly([[W / 2, 677], [W / 2 + 5, 672], [W / 2, 667], [W / 2 - 5, 672]]);

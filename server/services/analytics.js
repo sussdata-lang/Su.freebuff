@@ -1,6 +1,6 @@
 // لوحة الإحصاءات: مؤشرات ومجموعات بيانات للمخططات (تُرسم في المتصفح) وللتصدير (Excel / Word / PDF).
 // مصدر واحد للأرقام: الواجهة والتصدير يستهلكان نفس الجداول، فلا تختلف الأرقام بين الشاشة والملف.
-import { PASS_MARK } from './academics.js';
+import { passMark } from './academics.js';
 import { STATUS_LABEL, levelLabel } from './students.js';
 
 const MONTHS = ['كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول'];
@@ -35,7 +35,7 @@ export function analytics(db, { faculty, year } = {}, now = new Date()) {
     return rows;
   };
   const byYear = all(`SELECT sp.enroll_year k, COUNT(*) c ${S} GROUP BY sp.enroll_year ORDER BY k`, ...SP).map((r) => [String(r.k), r.c]);
-  const byLevel = all(`SELECT sp.study_level k, COUNT(*) c ${S} GROUP BY sp.study_level ORDER BY k`, ...SP).map((r) => [levelLabel(r.k), r.c]);
+  const byLevel = all(`SELECT sp.study_level k, COUNT(*) c ${S} GROUP BY sp.study_level ORDER BY k`, ...SP).map((r) => [levelLabel(r.k, db), r.c]);
   const regByMonth = months.map((m) => [m.label, one(`SELECT COUNT(*) c ${S} AND sp.created_at >= ? AND sp.created_at < ?`, ...SP, m.from, m.to).c]);
 
   /* --- الطلبات --- */
@@ -51,10 +51,10 @@ export function analytics(db, { faculty, year } = {}, now = new Date()) {
   /* --- الأكاديمي --- */
   const G = `FROM grades gr JOIN student_profiles sp ON sp.user_id = gr.student_id JOIN programs g ON g.id = sp.program_id LEFT JOIN faculties fa ON fa.id = g.faculty_id
              WHERE gr.workflow_status = 'approved' AND (? IS NULL OR fa.id = ?) AND (? IS NULL OR sp.enroll_year = ?)`;
-  const gs = one(`SELECT COUNT(*) c, AVG(gr.mark) a, SUM(gr.mark >= ${PASS_MARK}) p ${G}`, ...SP);
+  const gs = one(`SELECT COUNT(*) c, AVG(gr.mark) a, SUM(gr.mark >= ${passMark(db)}) p ${G}`, ...SP);
   const buckets = [['أقل من 50', 0, 49], ['50 – 59', 50, 59], ['60 – 69', 60, 69], ['70 – 79', 70, 79], ['80 – 89', 80, 89], ['90 – 100', 90, 100]];
   const dist = buckets.map(([l, a, b]) => [l, one(`SELECT COUNT(*) c ${G} AND gr.mark BETWEEN ? AND ?`, ...SP, a, b).c]);
-  const gradeByFaculty = all(`SELECT COALESCE(fa.name, 'غير محدد') k, COUNT(*) c, AVG(gr.mark) a, SUM(gr.mark >= ${PASS_MARK}) p ${G} GROUP BY fa.id ORDER BY a DESC`, ...SP).map((r) => [r.k, round1(r.a), pct(r.p, r.c)]);
+  const gradeByFaculty = all(`SELECT COALESCE(fa.name, 'غير محدد') k, COUNT(*) c, AVG(gr.mark) a, SUM(gr.mark >= ${passMark(db)}) p ${G} GROUP BY fa.id ORDER BY a DESC`, ...SP).map((r) => [r.k, round1(r.a), pct(r.p, r.c)]);
   const courses = all(`SELECT COALESCE(fa.name, 'غير محدد') k, COUNT(*) c FROM courses c JOIN programs g ON g.id = c.program_id LEFT JOIN faculties fa ON fa.id = g.faculty_id WHERE c.active = 1 AND (? IS NULL OR fa.id = ?) GROUP BY fa.id ORDER BY c DESC`, f, f).map((r) => [r.k, r.c]);
 
   /* --- الشكاوى والأخبار --- */

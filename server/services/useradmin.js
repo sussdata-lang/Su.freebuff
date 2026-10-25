@@ -1,4 +1,5 @@
 import { tx } from '../db.js';
+import { getSetting } from './settings.js';
 import { audit } from '../audit.js';
 import { HttpError } from '../http.js';
 import { hashPassword, tempPassword, validatePasswordPolicy } from '../security.js';
@@ -59,7 +60,7 @@ export async function createUser({ db, cfg }, actor, input, ip) {
   if (!/^[A-Za-z][A-Za-z0-9._-]{2,39}$/.test(username)) throw bad('اسم المستخدم: 3-40 حرفاً لاتينياً أو أرقاماً أو . _ - ويبدأ بحرف.');
   if (name.length < 2 || name.length > 100) throw bad('الاسم يجب أن يكون بين 2 و100 حرف.');
   if (input?.role === 'student') throw bad('يُسجَّل الطلاب من شاشة «تسجيل الطلاب» كي يكتمل ملفهم.', 'bad_request');
-  const pwBad = validatePasswordPolicy(input?.password);
+  const pwBad = validatePasswordPolicy(input?.password, getSetting(db, 'security.password_min'));
   if (pwBad) throw new HttpError(400, pwBad, 'weak_password');
   const rk = resolveRole(db, actor, input?.role), unit = resolveUnit(db, input?.unitId);
   if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) throw new HttpError(409, 'اسم المستخدم مستخدم مسبقاً.', 'conflict');

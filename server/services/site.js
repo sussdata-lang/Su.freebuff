@@ -1,6 +1,7 @@
 import { tx } from '../db.js';
 import { audit } from '../audit.js';
 import { HttpError } from '../http.js';
+import { getSetting } from './settings.js';
 
 // مفتاح التخزين ← [اسم الخاصية، التسمية، الحد الأقصى للطول]
 const FIELDS = {
@@ -10,17 +11,15 @@ const FIELDS = {
 };
 
 export function getSite({ db, cfg }) {
-  const out = { university: cfg.universityName, title: 'بوابة خدمات الطلاب', department: 'قسم شؤون الطلاب' };
-  for (const { key, value } of db.prepare('SELECT key, value FROM site_settings').all()) {
-    const f = FIELDS[key];
-    if (f && value) out[f[0]] = value;
-  }
-  return out;
+  return { university: getSetting(db, 'institution.university', cfg.universityName), title: getSetting(db, 'institution.portal'), department: getSetting(db, 'institution.department') };
 }
 
-export function universityName(db, cfg) {
-  const r = db.prepare("SELECT value FROM site_settings WHERE key = 'university_name'").get();
-  return r?.value || cfg.universityName;
+export function universityName(db, cfg) { return getSetting(db, 'institution.university', cfg.universityName); }
+
+// ترويسة الوثائق: «الجهة الأعلى — القسم» وسطر الدولة (يُحذف الفارغ منهما)
+export function headerLines(db) {
+  const dep = getSetting(db, 'institution.department'), min = getSetting(db, 'institution.ministry'), country = getSetting(db, 'institution.country');
+  return { line: [min, dep].filter(Boolean).join(' — '), corr: [min, 'المراسلات الداخلية'].filter(Boolean).join(' — '), country: [country, min].filter(Boolean).join(' · ') };
 }
 
 export function saveSite({ db, cfg }, actor, input, ip) {

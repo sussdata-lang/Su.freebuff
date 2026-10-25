@@ -6,6 +6,7 @@ import { HttpError } from '../http.js';
 import { buildPdf, prepareSigning, textWidth } from '../lib/pdf.js';
 import { signDetached } from './pki.js';
 import { identityOf } from './enrollcert.js';
+import { headerLines } from './site.js';
 import { canSee, docView } from './correspondence.js';
 
 const G = '#054239', GOLD = '#C9A24B', MUTE = '#566660', R = 545, L = 50;
@@ -22,11 +23,11 @@ function wrap(str, size, maxW) {
 const fit = (s, font, size, maxW) => { s = String(s ?? ''); while (s.length > 1 && textWidth(s, font, size) > maxW) s = s.slice(0, -1); return s; };
 const STATE = { approved: 'اعتمد', rejected: 'رفض', pending: 'بانتظار' };
 
-function paint(d, v, hash, cn, signedAt) {
+function paint(d, v, hash, cn, signedAt, hdr) {
   d.fill(G); d.rect(0, 742, 595.28, 100); d.fill(GOLD); d.rect(0, 738, 595.28, 4);
   d.image(478, 752, 68, 82);
   d.text('الجامعة السورية للعلوم الأمنية', { x: 465, y: 800, size: 21, font: 'bold', color: '#FFFFFF' });
-  d.text('وزارة الداخلية — المراسلات الداخلية', { x: 465, y: 774, size: 12, color: '#E6CB84' });
+  d.text(hdr.corr, { x: 465, y: 774, size: 12, color: '#E6CB84' });
   d.text(fit(v.title, 'bold', 20, 480), { x: 297.6, y: 705, size: 20, font: 'bold', color: G, align: 'center' });
   d.stroke(GOLD); d.line(190, 693, 405, 693, 1.5);
   const rows = [['رقم الصادر', v.outNo || '-'], ['رقم المستند', v.no], ['من', `${v.creator.name}${v.creator.unit ? ' — ' + v.creator.unit : ''}`], ['الموضوع', v.subject || '-'], ['تاريخ الاعتماد', utc(v.decidedAt)]];
@@ -62,7 +63,7 @@ export function corrPdf(deps, user, id) {
   const v = docView(db, d, user), created = new Date(d.decided_at ?? Date.now());
   const hash = crypto.createHash('sha256').update(JSON.stringify([v.no, v.outNo, v.title, v.subject, v.body, v.approvers.map((a) => [a.id, a.state, a.at])])).digest('hex');
   const ident = identityOf(cfg), cn = ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? 'signer';
-  const raw = buildPdf({ family: 'dejavu', title: v.title, author: 'الجامعة السورية للعلوم الأمنية', subject: `${v.no} ${v.outNo || ''}`, producer: 'الجامعة السورية للعلوم الأمنية', created, signer: { name: cn, reason: 'Approved correspondence', location: 'SY' } }, (p) => paint(p, v, hash, cn, created));
+  const raw = buildPdf({ family: 'dejavu', title: v.title, author: 'الجامعة السورية للعلوم الأمنية', subject: `${v.no} ${v.outNo || ''}`, producer: 'الجامعة السورية للعلوم الأمنية', created, signer: { name: cn, reason: 'Approved correspondence', location: 'SY' } }, (p) => paint(p, v, hash, cn, created, headerLines(db)));
   const prep = prepareSigning(raw), { cms } = signDetached(ident, prep.digest, { signingTime: created }), pdf = prep.finish(cms);
   fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, pdf);
   return { pdf, filename };

@@ -4,7 +4,7 @@ import { HttpError } from '../http.js';
 import { writeXlsx } from '../lib/xlsx.js';
 import { writeDocx } from '../lib/docx.js';
 import { writeZip } from '../lib/zip.js';
-import { PASS_MARK } from './academics.js';
+import { passMark } from './academics.js';
 import { logsForExport, KINDS as HALL_KINDS } from './attendance.js';
 import { sections, STATUS_LABEL, levelLabel, programLabel } from './students.js';
 
@@ -59,7 +59,7 @@ function studentsSet(db, f) {
     const v = r[f2.name];
     if (v === null || v === undefined) return '';
     if (f2.name === 'status') return STATUS_LABEL[v] ?? v;
-    if (f2.name === 'study_level') return levelLabel(v);
+    if (f2.name === 'study_level') return levelLabel(v, db);
     if (f2.type === 'program') return programLabel({ faculty: r.faculty, name: r.pname, degree: r.degree });
     return v;
   };
@@ -78,7 +78,7 @@ function gradesSet(db, f) {
   return { id: 'grades', title: 'العلامات', textCols: [0],
     headers: ['الرقم الجامعي', 'اسم الطالب', 'الكلية / المعهد', 'البرنامج', 'العام الدراسي', 'السنة الدراسية', 'الفصل', 'المقرر', 'رمز المقرر', 'الساعات', 'العلامة النظرية', 'العلامة العملية', 'المجموع', 'النتيجة'],
     meta: rows.map((r) => ({ level: r.level, semester: r.semester })),
-    rows: rows.map((r) => [r.student_no, fullName(r), r.faculty, r.pname, r.academic_year ?? '', r.level ? levelLabel(r.level) : '', semLabel(r.semester), r.course, r.ccode ?? '', r.hours, r.theory_mark ?? '', r.practical_mark ?? '', r.mark, r.mark >= PASS_MARK ? 'ناجح' : 'راسب']) };
+    rows: rows.map((r) => [r.student_no, fullName(r), r.faculty, r.pname, r.academic_year ?? '', r.level ? levelLabel(r.level, db) : '', semLabel(r.semester), r.course, r.ccode ?? '', r.hours, r.theory_mark ?? '', r.practical_mark ?? '', r.mark, r.mark >= passMark(db) ? 'ناجح' : 'راسب']) };
 }
 
 function coursesSet(db, f) {
@@ -90,7 +90,7 @@ function coursesSet(db, f) {
   const rows = db.prepare(`SELECT c.*, g.faculty, g.name pname, g.degree, (SELECT COUNT(*) FROM grades gr WHERE gr.course_id = c.id) gc
     FROM courses c JOIN programs g ON g.id = c.program_id ${where(w)} ORDER BY g.faculty, g.name, c.level, c.semester, c.name`).all(...a);
   return { id: 'courses', title: 'المواد', headers: ['الكلية / المعهد', 'البرنامج', 'السنة الدراسية', 'الفصل', 'المقرر', 'الرمز', 'الساعات', 'المدرّس', 'الحالة', 'عدد العلامات المسجَّلة'],
-    rows: rows.map((r) => [r.faculty, r.pname, levelLabel(r.level), semLabel(r.semester), r.name, r.code ?? '', r.hours, r.instructor ?? '', r.active ? 'فعّال' : 'معطَّل', r.gc]) };
+    rows: rows.map((r) => [r.faculty, r.pname, levelLabel(r.level, db), semLabel(r.semester), r.name, r.code ?? '', r.hours, r.instructor ?? '', r.active ? 'فعّال' : 'معطَّل', r.gc]) };
 }
 
 function requestsSet(db, f) {

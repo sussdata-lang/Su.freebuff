@@ -34,6 +34,7 @@ export const PERMISSION_CATALOG = [
     ['grade:manage',  'إدخال العلامات ومراجعتها'],
     ['grade:approve', 'اعتماد العلامات وقفلها (وتعديل المعتمد منها بتبرير)'],
     ['attendance:manage', 'سجل دخول وخروج القاعات (مسح الباركود)'],
+    ['faculty:manage', 'إدارة أعضاء هيئة التدريس والعبء التدريسي'],
   ] },
   { group: 'التواصل', items: [
     ['news:manage',      'نشر الأخبار'],
@@ -46,6 +47,8 @@ export const PERMISSION_CATALOG = [
     ['user:manage',  'إدارة الحسابات الإدارية'],
     ['role:manage',  'إدارة الأدوار والوحدات وروابطها'],
     ['backup:manage', 'النسخ الاحتياطي: إنشاء وتنزيل وحذف النسخ'],
+    ['settings:manage', 'الإعدادات العامة: تعديل القيم والحدود والقوائم التي يعمل بها النظام'],
+    ['hr:manage',    'إدارة الموارد البشرية والرواتب (الموظفون، الرواتب، الإجازات، العقود)'],
   ] },
 ].map((g) => ({ group: g.group, items: g.items.map(([key, label]) => ({ key, label })) }));
 
@@ -71,7 +74,7 @@ export const PERMISSIONS = {
   student: STUDENT,
   staff:   ['request:read_all', 'request:decide', 'request:forward', 'request:create_internal', 'request:import', 'corr:use', 'staffatt:self', 'document:read_all', 'stats:read',
             'student:register', 'student:read', 'student:update', 'student:reset_password',
-            'course:manage', 'grade:manage', 'attendance:manage', 'news:manage', 'complaint:manage', 'data:export'],
+            'course:manage', 'grade:manage', 'attendance:manage', 'faculty:manage', 'news:manage', 'complaint:manage', 'data:export'],
   auditor: ['request:read_all', 'corr:read_all', 'document:read_all', 'audit:read', 'stats:read'],
   admin:   [...ASSIGNABLE],            // المدير يملك كل الصلاحيات القابلة للإسناد (ومنها ما يُضاف مستقبلاً للفهرس)
 };

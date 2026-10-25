@@ -4,8 +4,8 @@ import { audit } from '../audit.js';
 import { HttpError } from '../http.js';
 import { effective, roleLabel } from '../permissions.js';
 import { unitTree } from './access.js';
+import { getSetting } from './settings.js';
 
-const MAX_FAILS = 5, LOCK_MS = 15 * 60 * 1000;
 // تجزئة وهمية تُستخدم عند غياب المستخدم كي يتساوى زمن الاستجابة (منع تعداد الحسابات)
 let dummyHash;
 
@@ -34,6 +34,7 @@ export async function login({ db, cfg, limiter }, { username, password, ip, ua }
     audit(db, null, 'دخول مرفوض: حساب مقفل', username, ip);
     throw new HttpError(423, 'الحساب مقفل مؤقتاً بعد محاولات فاشلة. حاول لاحقاً أو راجع المسؤول.', 'locked');
   }
+  const MAX_FAILS = getSetting(db, 'security.max_failed_logins'), LOCK_MS = getSetting(db, 'security.lock_minutes') * 60_000, SESSION_H = getSetting(db, 'security.session_hours', cfg.sessionHours);
   const ok = await verifyPassword(password, u ? u.password_hash : dummyHash);
   if (!u || !ok || !u.active) {
     if (u) {
@@ -48,9 +49,9 @@ export async function login({ db, cfg, limiter }, { username, password, ip, ua }
   db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?').run(u.id);
   const token = newToken(), now = Date.now();
   db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, ip, user_agent) VALUES (?,?,?,?,?,?)')
-    .run(sha256(token), u.id, now, now + cfg.sessionHours * 3600_000, ip, String(ua ?? '').slice(0, 200));
+    .run(sha256(token), u.id, now, now + SESSION_H * 3600_000, ip, String(ua ?? '').slice(0, 200));
   audit(db, { id: u.id, label: u.display_name, role: u.role_key ?? u.role }, 'تسجيل دخول', '', ip);
-  return { token, user: publicUser(db, u), maxAge: cfg.sessionHours * 3600 };
+  return { token, user: publicUser(db, u), maxAge: SESSION_H * 3600 };
 }
 
 export function logout({ db }, token, user, ip) {
@@ -63,7 +64,7 @@ export async function changePassword({ db, cfg, limiter }, user, token, { curren
   if (!limiter.check(`chpw:${user.id}`, 5, 60_000)) throw new HttpError(429, 'محاولات كثيرة؛ حاول بعد دقيقة.', 'rate_limited');
   if (typeof current !== 'string' || typeof next !== 'string') throw new HttpError(400, 'أدخل كلمة المرور الحالية والجديدة.', 'bad_request');
   if (!(await verifyPassword(current, user.password_hash))) throw new HttpError(400, 'كلمة المرور الحالية غير صحيحة.', 'bad_credentials', 'current');
-  const bad = validatePasswordPolicy(next);
+  const bad = validatePasswordPolicy(next, getSetting(db, 'security.password_min'));
   if (bad) throw new HttpError(400, bad, 'weak_password', 'next');
   if (next === current) throw new HttpError(400, 'كلمة المرور الجديدة يجب أن تختلف عن الحالية.', 'weak_password', 'next');
   const hash = await hashPassword(next, cfg.scryptN);

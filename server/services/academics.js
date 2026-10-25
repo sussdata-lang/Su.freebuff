@@ -3,8 +3,9 @@ import { workflowOn, initialStatus, canApprove, needJustification, logChange } f
 import { audit } from '../audit.js';
 import { HttpError } from '../http.js';
 import { tx } from '../db.js';
+import { getSetting } from './settings.js';
 
-export const PASS_MARK = 60;
+export const passMark = (db) => getSetting(db, 'grades.pass_mark');
 const CTRL = /[\u0000-\u001f\u007f]/;
 const text = (v, min, max, label) => {
   const s = String(v ?? '').replace(/[ \t]+/g, ' ').trim();
@@ -14,7 +15,7 @@ const text = (v, min, max, label) => {
 const intIn = (v, lo, hi, label) => { const n = Number(v); if (v === '' || v === null || v === undefined || !Number.isInteger(n) || n < lo || n > hi) throw new HttpError(400, `«${label}» يجب أن يكون عدداً صحيحاً بين ${lo} و${hi}.`, 'validation'); return n; };
 
 /* ---------------- دليل المواد ---------------- */
-const courseView = (c) => ({ id: c.id, programId: c.program_id, level: c.level, semester: c.semester, name: c.name, code: c.code, hours: c.hours, instructor: c.instructor, active: !!c.active });
+const courseView = (c) => ({ id: c.id, programId: c.program_id, level: c.level, semester: c.semester, name: c.name, code: c.code, hours: c.hours, instructor: c.instructor, memberId: c.member_id ?? null, active: !!c.active });
 
 export function listCourses({ db }, user, q) {
   if (user.role === 'student') {
@@ -39,7 +40,7 @@ export function createCourse({ db }, actor, b, ip) {
   const prog = db.prepare('SELECT id, years FROM programs WHERE id = ?').get(Number(b?.programId));
   if (!prog) throw new HttpError(400, 'البرنامج غير موجود.', 'validation');
   const level = intIn(b.level, 1, prog.years, 'السنة الدراسية'), semester = intIn(b.semester, 1, 2, 'الفصل');
-  const name = text(b.name, 2, 100, 'اسم المقرر'), hours = intIn(b.hours ?? 3, 0, 12, 'الساعات');
+  const name = text(b.name, 2, 100, 'اسم المقرر'), hours = intIn(b.hours ?? getSetting(db, 'academic.default_course_hours'), 0, getSetting(db, 'academic.max_course_hours'), 'الساعات');
   const code = b.code ? text(b.code, 1, 20, 'رمز المقرر') : null, instructor = b.instructor ? text(b.instructor, 2, 80, 'المدرّس') : null;
   if (db.prepare('SELECT 1 FROM courses WHERE program_id = ? AND level = ? AND semester = ? AND name = ?').get(prog.id, level, semester, name)) throw new HttpError(409, 'المقرر موجود مسبقاً في هذه السنة والفصل.', 'conflict');
   const id = Number(db.prepare('INSERT INTO courses (program_id, level, semester, name, code, hours, instructor) VALUES (?,?,?,?,?,?,?)').run(prog.id, level, semester, name, code, hours, instructor).lastInsertRowid);
@@ -54,24 +55,25 @@ export function toggleCourse({ db }, actor, id, active, ip) {
 }
 
 /* ---------------- العلامات ---------------- */
-const gview = (g) => ({ id: g.id, course: g.course, courseId: g.course_id, level: g.level, semester: g.semester, academicYear: g.academic_year,
-  hours: g.hours, theory: g.theory_mark, practical: g.practical_mark, total: g.mark, passed: g.mark >= PASS_MARK, instructor: g.instructor ?? null, workflowStatus: g.workflow_status });
+const gview = (g, pm) => ({ id: g.id, course: g.course, courseId: g.course_id, level: g.level, semester: g.semester, academicYear: g.academic_year,
+  hours: g.hours, theory: g.theory_mark, practical: g.practical_mark, total: g.mark, passed: g.mark >= pm, instructor: g.instructor ?? null, workflowStatus: g.workflow_status });
 
 // العلامات مجمّعة بالمقرر: أحدث محاولة تظهر، وما قبلها «علامات سابقة»
 export function gradesFor(db, studentId, level, { onlyApproved = false } = {}) {
+  const pm = passMark(db);
   const rows = db.prepare(`SELECT g.*, c.instructor FROM grades g LEFT JOIN courses c ON c.id = g.course_id
     WHERE g.student_id = ? ${onlyApproved ? "AND g.workflow_status = 'approved'" : ''} ${level ? 'AND g.level = ?' : ''} ORDER BY g.semester, g.course, g.academic_year DESC`).all(...(level ? [studentId, Number(level)] : [studentId]));
   const byCourse = new Map();
-  for (const g of rows) { const k = g.course_id ?? `x${g.id}`; if (!byCourse.has(k)) byCourse.set(k, { ...gview(g), previous: [] }); else byCourse.get(k).previous.push(gview(g)); }
+  for (const g of rows) { const k = g.course_id ?? `x${g.id}`; if (!byCourse.has(k)) byCourse.set(k, { ...gview(g, pm), previous: [] }); else byCourse.get(k).previous.push(gview(g, pm)); }
   const list = [...byCourse.values()];
   const hrs = list.reduce((s, g) => s + g.hours, 0);
   return { grades: list, summary: { count: list.length, passed: list.filter((g) => g.passed).length, failed: list.filter((g) => !g.passed).length,
-    average: hrs ? Math.round(list.reduce((s, g) => s + g.hours * g.total, 0) / hrs * 10) / 10 : null }, passMark: PASS_MARK };
+    average: hrs ? Math.round(list.reduce((s, g) => s + g.hours * g.total, 0) / hrs * 10) / 10 : null }, passMark: pm };
 }
 
 export function myGrades({ db }, user, q) {
   const p = db.prepare('SELECT study_level FROM student_profiles WHERE user_id = ?').get(user.id);
-  if (!p) return { grades: [], summary: { count: 0, passed: 0, failed: 0, average: null }, passMark: PASS_MARK, level: null };
+  if (!p) return { grades: [], summary: { count: 0, passed: 0, failed: 0, average: null }, passMark: passMark(db), level: null };
   const level = Number(q.level) || p.study_level;
   return { ...gradesFor(db, user.id, level, { onlyApproved: true }), level };
 }
@@ -84,10 +86,11 @@ export function enterGrade({ db }, actor, studentId, b, ip) {
   const ay = String(b?.academicYear ?? '');
   const m = /^(\d{4})\/(\d{4})$/.exec(ay);
   if (!m || Number(m[2]) !== Number(m[1]) + 1) throw new HttpError(400, 'العام الدراسي بصيغة 2025/2026.', 'validation');
-  const theory = intIn(b.theory, 0, 100, 'العلامة النظرية');
-  const practical = b.practical === '' || b.practical === null || b.practical === undefined ? null : intIn(b.practical, 0, 100, 'العلامة العملية');
+  const totalMax = getSetting(db, 'grades.total_max'), practicalMax = getSetting(db, 'grades.practical_max');
+  const theory = intIn(b.theory, 0, totalMax, 'العلامة النظرية');
+  const practical = b.practical === '' || b.practical === null || b.practical === undefined ? null : intIn(b.practical, 0, practicalMax, 'العلامة العملية');
   const total = theory + (practical ?? 0);
-  if (total > 100) throw new HttpError(400, 'مجموع العلامتين لا يتجاوز 100.', 'validation');
+  if (total > totalMax) throw new HttpError(400, `مجموع العلامتين لا يتجاوز ${totalMax}.`, 'validation');
   const term = `${ay}-${c.semester === 1 ? 'الفصل الأول' : 'الفصل الثاني'}`, now = Date.now();
   return tx(db, () => {
     const ex = db.prepare('SELECT * FROM grades WHERE student_id = ? AND course_id = ? AND academic_year = ?').get(Number(studentId), c.id, ay);
@@ -114,7 +117,7 @@ export function enterGrade({ db }, actor, studentId, b, ip) {
 }
 
 /* ---------------- الأخبار ---------------- */
-export function listNews({ db }, limit = 30) {
+export function listNews({ db }, limit = getSetting(db, 'display.news_limit')) {
   const rows = db.prepare('SELECT id, title, body, pinned, published_at FROM news ORDER BY pinned DESC, published_at DESC, id DESC LIMIT ?').all(limit);
   const media = mediaFor(db, rows.map((n) => n.id));
   return rows.map((n) => ({ id: n.id, title: n.title, body: n.body, pinned: !!n.pinned, publishedAt: n.published_at, media: media.get(n.id) ?? [] }));
@@ -176,14 +179,22 @@ export function updateCourse({ db }, actor, id, b, ip) {
   if (!c) throw new HttpError(404, 'المقرر غير موجود.', 'not_found');
   const prog = db.prepare('SELECT years FROM programs WHERE id = ?').get(c.program_id);
   const level = intIn(b?.level ?? c.level, 1, prog.years, 'السنة الدراسية'), semester = intIn(b?.semester ?? c.semester, 1, 2, 'الفصل');
-  const name = text(b?.name ?? c.name, 2, 100, 'اسم المقرر'), hours = intIn(b?.hours ?? c.hours, 0, 12, 'الساعات');
-  const code = b?.code ? text(b.code, 1, 20, 'رمز المقرر') : null, instructor = b?.instructor ? text(b.instructor, 2, 80, 'المدرّس') : null;
+  const name = text(b?.name ?? c.name, 2, 100, 'اسم المقرر'), hours = intIn(b?.hours ?? c.hours, 0, getSetting(db, 'academic.max_course_hours'), 'الساعات');
+  const code = b?.code ? text(b.code, 1, 20, 'رمز المقرر') : null;
+  // الإسناد إلى عضو هيئة التدريس (وحدة 5.6): memberId غائباً = بلا تغيير، null = فك الإسناد
+  const memberId = b && b.memberId !== undefined ? (b.memberId === null || b.memberId === '' ? null : Number(b.memberId)) : c.member_id;
+  const member = memberId !== null ? db.prepare('SELECT name FROM faculty_members WHERE id = ?').get(memberId) : null;
+  if (memberId !== null && !member) throw new HttpError(400, 'عضو هيئة التدريس غير موجود.', 'validation', 'memberId');
+  // نص «المدرّس»: الإسناد يتحكّم به، وإلا النص المُرسل، وإلا القيمة الحالية
+  let instructor = b && b.instructor !== undefined ? (b.instructor ? text(b.instructor, 2, 80, 'المدرّس') : null) : c.instructor;
+  if (member) instructor = member.name;
   if (db.prepare('SELECT 1 FROM courses WHERE program_id = ? AND level = ? AND semester = ? AND name = ? AND id != ?').get(c.program_id, level, semester, name, c.id)) throw new HttpError(409, 'يوجد مقرر بالاسم نفسه في هذه السنة والفصل.', 'conflict');
   tx(db, () => {
-    db.prepare('UPDATE courses SET level = ?, semester = ?, name = ?, hours = ?, code = ?, instructor = ? WHERE id = ?').run(level, semester, name, hours, code, instructor, c.id);
+    db.prepare('UPDATE courses SET level = ?, semester = ?, name = ?, hours = ?, code = ?, instructor = ?, member_id = ? WHERE id = ?').run(level, semester, name, hours, code, instructor, memberId, c.id);
     // العلامات تحمل نسخة من بيانات المقرر وقت الإدخال: تُزامَن كي لا تتناقض مع الدليل
     db.prepare('UPDATE grades SET course = ?, hours = ?, level = ?, semester = ? WHERE course_id = ?').run(name, hours, level, semester, c.id);
     audit(db, actor, 'تعديل مقرر', name.slice(0, 100), ip);
+    if (memberId !== c.member_id) audit(db, actor, memberId ? 'إسناد مقرر لعضو هيئة تدريس' : 'فك إسناد مقرر', `${name.slice(0, 60)}${member ? ' ← ' + member.name : ''}`, ip);
   });
   return { course: courseView(db.prepare('SELECT * FROM courses WHERE id = ?').get(c.id)) };
 }
@@ -242,6 +253,7 @@ export function listGradesTable({ db }, q) {
   if (q.semester === '1' || q.semester === '2') { where.push('gr.semester = ?'); args.push(Number(q.semester)); }
   if (/^\d{4}\/\d{4}$/.test(String(q.year ?? ''))) { where.push('gr.academic_year = ?'); args.push(q.year); }
   if (['draft', 'reviewed', 'approved'].includes(q.workflow)) { where.push('gr.workflow_status = ?'); args.push(q.workflow); }
+  const PASS_MARK = passMark(db);
   if (q.status === 'pass') { where.push('gr.mark >= ?'); args.push(PASS_MARK); } else if (q.status === 'fail') { where.push('gr.mark < ?'); args.push(PASS_MARK); }
   const W = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const FROM = `FROM grades gr JOIN users u ON u.id = gr.student_id LEFT JOIN student_profiles sp ON sp.user_id = u.id LEFT JOIN programs g ON g.id = sp.program_id LEFT JOIN courses c ON c.id = gr.course_id`;

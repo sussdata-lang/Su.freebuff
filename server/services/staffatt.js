@@ -1,5 +1,6 @@
 // حضور وانصراف الموظفين + رصيد الإجازات (يُخصم عند اعتماد طلب hr_leave)
 import { tx } from '../db.js';
+import { getSetting } from './settings.js';
 import { audit } from '../audit.js';
 import { HttpError } from '../http.js';
 import { writeXlsx } from '../lib/xlsx.js';
@@ -21,9 +22,7 @@ export function workingDays(from, to, weekend = 'fri,sat') {
 }
 
 export function getHrSettings(db) {
-  const get = (k) => db.prepare('SELECT value FROM site_settings WHERE key = ?').get(k)?.value;
-  const d = Number(get('leave_default_days')), w = get('weekend_days');
-  return { leaveDefaultDays: Number.isFinite(d) && get('leave_default_days') !== undefined ? d : DEFAULT_ENTITLEMENT, weekend: WEEKENDS[w] ? w : 'fri,sat', weekendOptions: Object.entries(WEEKEND_LABEL).map(([value, label]) => ({ value, label })) };
+  return { leaveDefaultDays: getSetting(db, 'hr.leave_default_days'), weekend: getSetting(db, 'hr.weekend'), annualType: getSetting(db, 'hr.annual_leave_type'), weekendOptions: Object.entries(WEEKEND_LABEL).map(([value, label]) => ({ value, label })) };
 }
 export function saveHrSettings({ db }, actor, input, ip) {
   const cur = getHrSettings(db), set = db.prepare('INSERT INTO site_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
@@ -37,7 +36,7 @@ export function saveHrSettings({ db }, actor, input, ip) {
 export function leaveSummary(db, userId, year) {
   const e = db.prepare('SELECT days FROM leave_entitlements WHERE user_id = ? AND year = ?').get(userId, year);
   const entitlement = e ? e.days : getHrSettings(db).leaveDefaultDays;
-  const used = db.prepare("SELECT COALESCE(SUM(days),0) n FROM leave_records WHERE user_id = ? AND year = ? AND type = 'اعتيادية'").get(userId, year).n;
+  const used = db.prepare("SELECT COALESCE(SUM(days),0) n FROM leave_records WHERE user_id = ? AND year = ? AND type = ?").get(userId, year, getSetting(db, 'hr.annual_leave_type')).n;
   return { year, entitlement, used, remaining: entitlement - used };
 }
 
@@ -108,7 +107,7 @@ export function recordLeaveOnApprove(db, request, service) {
   if (!isDay(from) || !isDay(to) || to < from) throw new HttpError(409, 'تواريخ الإجازة غير صالحة.', 'conflict');
   const days = workingDays(from, to, getHrSettings(db).weekend), year = Number(from.slice(0, 4));
   if (days < 1) throw new HttpError(409, 'الفترة المطلوبة لا تحوي أياماً للعمل (عطلة نهاية الأسبوع).', 'conflict');
-  if (type === 'اعتيادية') {
+  if (type === getSetting(db, 'hr.annual_leave_type')) {
     const s = leaveSummary(db, request.student_id, year);
     if (days > s.remaining) throw new HttpError(409, `الرصيد غير كافٍ: المطلوب ${days} يوماً والمتبقي ${s.remaining}.`, 'conflict');
   }

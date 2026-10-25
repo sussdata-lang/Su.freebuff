@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { tx } from '../db.js';
 import { audit } from '../audit.js';
 import { sha256 } from '../security.js';
+import { getSetting } from './settings.js';
 import { HttpError } from '../http.js';
 import { runRules } from './rules.js';
 import { issueDocument } from './documents.js';
@@ -95,10 +96,11 @@ export function requestView(db, r, { withStudent = false } = {}) {
   return v;
 }
 
-export const MAX_TOTAL_ATTACH = 8 * 1024 * 1024;
+const mb = (n) => n * 1024 * 1024;
 
 // يقرأ المرفقات من الطلب: attachments[] (الجديدة) أو attachment (القديمة، مفرد)
-function readAttachments(cfg, service, input) {
+function readAttachments(db, cfg, service, input) {
+  const MAX_ONE = mb(getSetting(db, 'requests.max_attachment_mb', Math.round(cfg.maxAttachmentBytes / 1048576))), MAX_TOTAL_ATTACH = mb(getSetting(db, 'requests.max_total_mb'));
   const raw = Array.isArray(input.attachments) ? input.attachments : (input.attachment ? [input.attachment] : []);
   if (raw.length > service.max_attachments) throw new HttpError(400, `الحد الأقصى للمرفقات في هذه الخدمة ${service.max_attachments}.`, 'validation');
   const slots = JSON.parse(service.attachments_json || '[]');
@@ -106,8 +108,8 @@ function readAttachments(cfg, service, input) {
   return raw.map((a, i) => {
     if (!a || typeof a.data !== 'string' || typeof a.name !== 'string') throw new HttpError(400, 'مرفق غير صالح.', 'validation');
     const buf = Buffer.from(a.data, 'base64');
-    if (!buf.length || buf.length > cfg.maxAttachmentBytes) throw new HttpError(413, 'حجم المرفق الواحد يجب ألا يتجاوز 2 ميغابايت.', 'too_large');
-    total += buf.length; if (total > MAX_TOTAL_ATTACH) throw new HttpError(413, 'مجموع المرفقات يجب ألا يتجاوز 8 ميغابايت.', 'too_large');
+    if (!buf.length || buf.length > MAX_ONE) throw new HttpError(413, `حجم المرفق الواحد يجب ألا يتجاوز ${MAX_ONE / 1048576} ميغابايت.`, 'too_large');
+    total += buf.length; if (total > MAX_TOTAL_ATTACH) throw new HttpError(413, `مجموع المرفقات يجب ألا يتجاوز ${MAX_TOTAL_ATTACH / 1048576} ميغابايت.`, 'too_large');
     const mime = detectMime(buf);
     if (!mime) throw new HttpError(415, 'المرفقات المسموحة: PDF أو PNG أو JPG.', 'bad_type');
     const slot = typeof a.slot === 'string' && slots.some((s) => s.label === a.slot) ? a.slot : (slots[i]?.label ?? null);
@@ -125,7 +127,7 @@ export function createRequest({ db, cfg }, user, input, ip) {
   if (service.audience !== 'both' && service.audience !== kind) throw new HttpError(400, kind === 'student' ? 'هذه الخدمة للموظفين فقط.' : 'هذه الخدمة للطلاب فقط.', 'validation');
   const details = validateDetails(service, input.details, { db, studentId: user.id });
 
-  const atts = readAttachments(cfg, service, input);
+  const atts = readAttachments(db, cfg, service, input);
   const requiredN = JSON.parse(service.attachments_json || '[]').filter((s) => s.required).length;
   if (service.requires_attachment && atts.length < Math.max(1, requiredN)) throw new HttpError(400, requiredN > 1 ? `هذه الخدمة تتطلب ${requiredN} مرفقات على الأقل.` : 'هذه الخدمة تتطلب مرفقاً.', 'validation');
   const unit = service.unit_code ? db.prepare('SELECT id FROM org_units WHERE code = ? AND active = 1').get(service.unit_code) : null;

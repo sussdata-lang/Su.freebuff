@@ -1,5 +1,5 @@
 // شهادة تسجيل الطالب: PDF/A-2b موقَّعة رقمياً (CMS/X.509، SHA-256)، برمز QR إلى بوابة التحقق، وبختم زمني. تُنشأ تلقائياً عند إنشاء حساب الطالب.
-import { universityName } from './site.js';
+import { universityName, headerLines } from './site.js';
 import { log } from '../lib/logger.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,12 +28,12 @@ export function payloadFor(db, cfg, studentId) {
 }
 
 const utc = (ms) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-function paint(d, p, code, url, qr, signAt, ident, payloadHash) {
+function paint(d, p, code, url, qr, signAt, ident, payloadHash, hdr) {
   const G = '#054239', GOLD = '#C9A24B';
   d.fill(G); d.rect(0, 742, 595.28, 100); d.fill(GOLD); d.rect(0, 738, 595.28, 4);
   d.image(478, 752, 68, 82);
   d.text(p.university, { x: 465, y: 800, size: 21, font: 'bold', color: '#FFFFFF' });
-  d.text('وزارة الداخلية — قسم شؤون الطلاب', { x: 465, y: 774, size: 12, color: '#E6CB84' });
+  d.text(hdr.line, { x: 465, y: 774, size: 12, color: '#E6CB84' });
   d.text('شهادة تسجيل طالب', { x: 297.6, y: 690, size: 26, font: 'bold', color: G, align: 'center' });
   d.stroke(GOLD); d.line(180, 676, 415, 676, 1.5);
   const rows = [['اسم الطالب', p.student.name], ['الرقم الجامعي (اسم المستخدم)', p.student.studentNo], ['الكلية / المعهد', p.faculty], ...(p.program !== p.faculty ? [['البرنامج', p.program]] : []),
@@ -65,7 +65,7 @@ export async function issueEnrollmentCertificate({ db, cfg }, studentId, { now =
   const ident = identityOf(cfg), url = `${publicBase(cfg)}/?verify=${code}`, qr = makeQr(url);
   const raw = buildPdf({ family: 'cairo', title: `شهادة تسجيل الطالب ${payload.student.name}`, author: payload.university, subject: `شهادة تسجيل — ${payload.student.studentNo}`, producer: 'الجامعة السورية للعلوم الأمنية', created: now,
     signer: { name: ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? 'signer', reason: 'Student enrollment certificate', location: 'SY' } },
-    (d) => paint(d, payload, code, url, qr, now, ident, payloadHash));
+    (d) => paint(d, payload, code, url, qr, now, ident, payloadHash, headerLines(db)));
   const prep = prepareSigning(raw), first = signDetached(ident, prep.digest, { signingTime: now });
   let cms = first.cms, tsa = { status: 'local', url: null, time: now.getTime() };
   if (cfg.tsaUrl) {

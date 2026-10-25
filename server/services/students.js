@@ -3,6 +3,7 @@ import { enqueueCertificate } from './enrollcert.js';
 import { audit } from '../audit.js';
 import { hashPassword, tempPassword } from '../security.js';
 import { HttpError } from '../http.js';
+import { getSetting, ITEMS } from './settings.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { certDir } from './enrollcert.js';
@@ -12,15 +13,14 @@ import { purgeStudentFiles } from './studentfiles.js';
    تسجيل الطلاب: تعريف الحقول مصدر واحد للتحقق في الخادم ولرسم النموذج في الواجهة.
    قوائم الاختيار هنا قيم افتراضية معقولة؛ تعدَّل في الكود، أما البرامج فتُدار من الواجهة.
 ------------------------------------------------------------------- */
-export const GOVERNORATES = ['دمشق', 'ريف دمشق', 'حلب', 'حمص', 'حماة', 'اللاذقية', 'طرطوس', 'إدلب', 'درعا', 'السويداء', 'القنيطرة', 'دير الزور', 'الرقة', 'الحسكة', 'خارج سوريا'];
+const GOVERNORATES = (db) => getSetting(db, 'students.governorates');
 export const STATUS_LABEL = { active: 'مقيَّد', suspended: 'موقوف القيد', withdrawn: 'منسحب', transferred: 'محوَّل', graduated: 'متخرج' };
-const LEVELS = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة'];
-export const levelLabel = (n) => `السنة ${LEVELS[n - 1] ?? n}`;
+const ACADEMIC_DEFAULT_LEVELS = ITEMS['academic.levels'].default;
+export const levelLabel = (n, db) => `السنة ${(db ? getSetting(db, 'academic.levels') : ACADEMIC_DEFAULT_LEVELS)[n - 1] ?? n}`;
 
-const HS_TYPES = ['الثانوية العامة - الفرع العلمي', 'الثانوية العامة - الفرع الأدبي', 'الثانوية المهنية - صناعي', 'الثانوية المهنية - تجاري', 'الثانوية المهنية - نسوي', 'الثانوية المهنية - زراعي',
-  'معهد متوسط', 'شهادة ثانوية أجنبية / معادلة', 'أخرى'];
-const ADMISSIONS = ['القبول العام (المفاضلة)', 'التعليم الموازي', 'التعليم المفتوح / الافتراضي', 'أبناء أعضاء الهيئة التدريسية', 'الطلاب الوافدون', 'نقل من جامعة أخرى', 'أخرى'];
-const RELATIONS = ['الأب', 'الأم', 'الأخ', 'الأخت', 'الزوج/الزوجة', 'قريب آخر', 'وصي'];
+const HS_TYPES = (db) => getSetting(db, 'students.hs_types');
+const ADMISSIONS = (db) => getSetting(db, 'students.admissions');
+const RELATIONS = (db) => getSetting(db, 'students.relations');
 
 // الجهة التي برنامجها الوحيد يحمل اسمها (كلية، معهد، مركز) تُعرض باسمها فقط
 export const programLabel = (p) => (p.faculty === p.name ? p.faculty : `${p.faculty} — ${p.degree} ${p.name}`);
@@ -49,29 +49,29 @@ export function sections(db) {
     { id: 'contact', title: 'الاتصال والسكن', fields: [
       F('phone', 'رقم الهاتف المحمول', 'tel', { required: true }),
       F('email', 'البريد الإلكتروني', 'email'),
-      F('governorate', 'محافظة السكن', 'select', { required: true, options: opts(GOVERNORATES) }),
+      F('governorate', 'محافظة السكن', 'select', { required: true, options: opts(GOVERNORATES(db)) }),
       F('city', 'المدينة / المنطقة', 'text', { required: true, max: 60 }),
       F('address', 'العنوان التفصيلي', 'text', { required: true, max: 200, wide: true }),
     ] },
     { id: 'certificate', title: 'الشهادة الثانوية', fields: [
-      F('hs_type', 'نوع الشهادة', 'select', { required: true, options: opts(HS_TYPES) }),
+      F('hs_type', 'نوع الشهادة', 'select', { required: true, options: opts(HS_TYPES(db)) }),
       F('hs_year', 'سنة الحصول عليها', 'int', { required: true, min: 1970, max: year, default: year }),
       F('hs_school', 'المدرسة', 'text', { max: 100 }),
-      F('hs_governorate', 'محافظة الشهادة', 'select', { options: opts(GOVERNORATES) }),
+      F('hs_governorate', 'محافظة الشهادة', 'select', { options: opts(GOVERNORATES(db)) }),
       F('hs_score', 'مجموع الطالب', 'num', { required: true, max: 100000 }),
     ] },
     { id: 'academic', title: 'القيد الأكاديمي', fields: [
       F('program_id', 'الكلية والبرنامج', 'program', { required: true, options: programs, wide: true }),
-      F('admission_type', 'نوع القبول', 'select', { required: true, options: opts(ADMISSIONS) }),
+      F('admission_type', 'نوع القبول', 'select', { required: true, options: opts(ADMISSIONS(db)) }),
       F('ministerial_no', 'الرقم الوزاري', 'text', { max: 20, hint: 'رقم القبول الوزاري إن وُجد' }),
       F('enroll_year', 'سنة القيد', 'int', { required: true, min: 1980, max: year + 1, default: year }),
       F('enroll_term', 'فصل القيد', 'select', { required: true, options: opts(['الفصل الأول', 'الفصل الثاني', 'الفصل الصيفي']), default: 'الفصل الأول' }),
-      F('study_level', 'السنة الدراسية الحالية', 'select', { required: true, options: opts([1, 2, 3, 4].map((n) => ({ v: n, l: levelLabel(n) }))), default: 1 }),
+      F('study_level', 'السنة الدراسية الحالية', 'select', { required: true, options: opts([1, 2, 3, 4].map((n) => ({ v: n, l: levelLabel(n, db) }))), default: 1 }),
       F('status', 'حالة القيد', 'select', { required: true, editOnly: true, default: 'active', options: opts(Object.entries(STATUS_LABEL).map(([v, l]) => ({ v, l }))) }),
     ] },
     { id: 'guardian', title: 'ولي الأمر وجهة الطوارئ', fields: [
       F('guardian_name', 'اسم ولي الأمر', 'name', { required: true, max: 80 }),
-      F('guardian_relation', 'صلة القرابة', 'select', { required: true, options: opts(RELATIONS) }),
+      F('guardian_relation', 'صلة القرابة', 'select', { required: true, options: opts(RELATIONS(db)) }),
       F('guardian_phone', 'هاتف ولي الأمر', 'tel', { required: true }),
       F('emergency_phone', 'هاتف آخر للطوارئ', 'tel'),
       F('notes', 'ملاحظات الموظف (لا تظهر للطالب)', 'longtext', { max: 500, wide: true }),
@@ -207,7 +207,7 @@ const SELECT = `SELECT p.*, u.student_no, u.username, u.display_name, u.must_cha
 function view(db, r, { full = true, own = false } = {}) {
   const base = {
     id: r.user_id, studentNo: r.student_no, name: fullName(r), status: r.status, statusLabel: STATUS_LABEL[r.status],
-    program: { id: r.program_id, faculty: r.faculty, name: r.program_name, degree: r.degree, years: r.years, label: programLabel({ faculty: r.faculty, name: r.program_name, degree: r.degree }) }, level: r.study_level, levelLabel: levelLabel(r.study_level),
+    program: { id: r.program_id, faculty: r.faculty, name: r.program_name, degree: r.degree, years: r.years, label: programLabel({ faculty: r.faculty, name: r.program_name, degree: r.degree }) }, level: r.study_level, levelLabel: levelLabel(r.study_level, db),
     enrollYear: r.enroll_year, phone: r.phone, nationalId: full ? r.national_id : maskId(r.national_id),
   };
   if (!full) return base;
@@ -234,7 +234,7 @@ export function duplicateCheck(db, p, selfId = 0) {
 
 export function composeUser(db, p) {
   const g = db.prepare('SELECT faculty, name, degree FROM programs WHERE id = ?').get(p.program_id);
-  return { display: shortName(p), program: `${g.faculty === g.name ? g.name : `${g.degree} ${g.name}`} - ${levelLabel(p.study_level)}` };
+  return { display: shortName(p), program: `${g.faculty === g.name ? g.name : `${g.degree} ${g.name}`} - ${levelLabel(p.study_level, db)}` };
 }
 
 export async function registerStudent({ db, cfg }, actor, input, ip) {
@@ -532,9 +532,9 @@ export function listStudentsTable({ db }, q) {
   if (Number(q.level) > 0) eq('p.study_level', Number(q.level));
   if (STATUS_LABEL[q.status]) eq('p.status', q.status);
   if (q.gender === 'ذكر' || q.gender === 'أنثى') eq('p.gender', q.gender);
-  if (GOVERNORATES.includes(q.governorate)) eq('p.governorate', q.governorate);
+  if (GOVERNORATES(db).includes(q.governorate)) eq('p.governorate', q.governorate);
   if (Number(q.enrollYear) > 0) eq('p.enroll_year', Number(q.enrollYear));
-  if (String(q.admission ?? '') && ADMISSIONS.includes(q.admission)) eq('p.admission_type', q.admission);
+  if (String(q.admission ?? '') && ADMISSIONS(db).includes(q.admission)) eq('p.admission_type', q.admission);
   if (q.files === 'none') where.push('NOT EXISTS (SELECT 1 FROM student_files f WHERE f.student_id = p.user_id)');
   else if (q.files === 'some') where.push('EXISTS (SELECT 1 FROM student_files f WHERE f.student_id = p.user_id)');
   if (q.holds === '1') where.push('EXISTS (SELECT 1 FROM student_holds h WHERE h.student_id = p.user_id AND h.active = 1)');
@@ -553,11 +553,11 @@ export function listStudentsTable({ db }, q) {
     total: sum.n, page, pages, size,
     summary: { count: sum.n, active: sum.active ?? 0, male: sum.male ?? 0, female: sum.female ?? 0 },
     options: { faculties: db.prepare('SELECT id, name FROM faculties ORDER BY id').all(), programs: db.prepare('SELECT g.id, g.faculty_id facultyId, g.faculty, g.name, g.degree FROM programs g ORDER BY g.faculty, g.name').all().map((x) => ({ id: x.id, facultyId: x.facultyId, label: programLabel(x) })),
-      governorates: GOVERNORATES, admissions: ADMISSIONS, enrollYears: db.prepare('SELECT DISTINCT enroll_year y FROM student_profiles ORDER BY y DESC').all().map((r) => r.y), statuses: STATUS_LABEL, levels: 4 },
+      governorates: GOVERNORATES(db), admissions: ADMISSIONS(db), enrollYears: db.prepare('SELECT DISTINCT enroll_year y FROM student_profiles ORDER BY y DESC').all().map((r) => r.y), statuses: STATUS_LABEL, levels: 4 },
     rows: rows.map((r) => ({ id: r.user_id, studentNo: r.student_no, name: fullName(r), nameEn: r.name_en, motherName: r.mother_name, nationalId: r.national_id, gender: r.gender, birthDate: r.birth_date, birthPlace: r.birth_place,
       nationality: r.nationality, maritalStatus: r.marital_status, phone: r.phone, email: r.email, governorate: r.governorate, city: r.city, address: r.address, hsType: r.hs_type, hsYear: r.hs_year, hsSchool: r.hs_school,
       hsGovernorate: r.hs_governorate, hsScore: r.hs_score, faculty: r.faculty, program: r.program_name === r.faculty ? '' : r.program_name, degree: r.degree, admission: r.admission_type, ministerialNo: r.ministerial_no,
-      enrollYear: r.enroll_year, enrollTerm: r.enroll_term, level: r.study_level, levelLabel: levelLabel(r.study_level), status: r.status, statusLabel: STATUS_LABEL[r.status], guardianName: r.guardian_name,
+      enrollYear: r.enroll_year, enrollTerm: r.enroll_term, level: r.study_level, levelLabel: levelLabel(r.study_level, db), status: r.status, statusLabel: STATUS_LABEL[r.status], guardianName: r.guardian_name,
       guardianRelation: r.guardian_relation, guardianPhone: r.guardian_phone, emergencyPhone: r.emergency_phone, notes: r.notes, holds: r.holds, files: r.files, photoId: r.photo_id ?? null, createdAt: r.created_at })),
   };
 }

@@ -1,10 +1,11 @@
 import { writeXlsx, readXlsx } from '../lib/xlsx.js';
+import { getSetting } from './settings.js';
 import { HttpError } from '../http.js';
 import { audit } from '../audit.js';
 import { createRequest, listRequests, requesterKind, scopeOf, validateDetails } from './requests.js';
 
 const bad = (m, s = 400) => new HttpError(s, m, 'validation');
-const MAX_ROWS = 500, FORM = 'النموذج';
+const FORM = 'النموذج';
 const AUD = { student: 'الطلاب', staff: 'الموظفون', both: 'الطلاب والموظفون' };
 const STATUS = { review: 'قيد المراجعة', approved: 'مقبول', rejected: 'مرفوض' };
 const norm = (s) => String(s ?? '').replace(/[*\s]+/g, ' ').trim();
@@ -16,6 +17,7 @@ const typeName = { text: 'نص', textarea: 'نص طويل', select: 'قائمة'
 
 // قالب فارغ: تعليمات + نموذج بقوائم وقيود إدخال + قوائم الخيارات
 export function buildTemplate(db, code) {
+  const MAX_ROWS = getSetting(db, 'requests.import_max_rows');
   const s = getService(db, code), fields = fieldsOf(s), slots = JSON.parse(s.attachments_json || '[]');
   const studentCol = s.audience !== 'staff';
   const head = [...(studentCol ? ['الرقم الجامعي'] : []), ...fields.map((f) => (f.required ? `${f.label} *` : f.label))];
@@ -77,6 +79,7 @@ export function exportRequests(deps, user, q = {}) {
 
 // استيراد دفعة: commit=false فحص بلا كتابة، commit=true تقديم الصفوف السليمة
 export function importRequests(deps, user, code, { filename, data, commit }, ip) {
+  const MAX_ROWS = getSetting(deps.db, 'requests.import_max_rows');
   const { db } = deps;
   if (typeof data !== 'string' || !data) throw bad('لم يصل ملف.');
   const s = getService(db, code);

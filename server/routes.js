@@ -10,12 +10,15 @@ import { createDoc, updateDoc, sendDoc, getDoc, listDocs, decideDoc, commentDoc,
 import { corrPdf } from './services/corrpdf.js';
 import { listTemplates, createTemplate, updateTemplate, deleteTemplate } from './services/corrTemplates.js';
 import { deskSummary } from './services/desk.js';
+import { listSettings, saveSettings, resetSettings, publicLimits } from './services/settings.js';
 import { punch, myAttendance, dayReport, exportMonth, listBalances, setEntitlement, getHrSettings, saveHrSettings } from './services/staffatt.js';
 import { runImport, IMPORT_PERM } from './services/importer.js';
 import { addStudentFile, listStudentFiles, deleteStudentFile, streamStudentFile } from './services/studentfiles.js';
 import { createBackup, backupInfo, backupPath, deleteBackup } from './services/backup.js';
 import { vapidKeys, subscribe as pushSubscribe, unsubscribe as pushUnsubscribe, subscriptionCount, notify, notifyNews, notifyGrade, notifyRequest, notifyComplaint } from './services/push.js';
 import { scan as hallScan, addManual as hallAdd, updateLog as hallUpdate, deleteLog as hallDelete, listLogs, openLogs, findStudent } from './services/attendance.js';
+import { listFaculty, createFaculty, updateFaculty as updateMember, toggleFaculty as toggleMember, deleteFaculty as deleteMember } from './services/faculty.js';
+import { listEmployees, getEmployee, createEmployee, updateEmployee, toggleEmployeeStatus, deleteEmployee, createSalaryRecord, listSalaries, latestSalary, listLeaves, createLeaveRequest, getLeave, approveLeaveRequest, rejectLeaveRequest, cancelLeaveRequest, listContracts, createContract, listOptions } from './services/hr.js';
 import { addUpload, addLink, deleteMedia, streamMedia } from './services/media.js';
 import { analytics, filterOptions } from './services/analytics.js';
 import { buildReportXlsx, buildReportDocx } from './services/reports.js';
@@ -50,9 +53,12 @@ export function buildRouter(deps) {
   r.add('POST', '/api/auth/change-password', async (c) => { await changePassword(deps, c.user, c.cookies.sid, c.body, c.ip); c.json(200, { ok: true }); }, { allowMustChange: true });
   // بلا جلسة يعيد user:null بحالة 200 (لا ضجيج 401 في المتصفح عند أول فتح)
   r.add('GET', '/api/health', (c) => { db.prepare('SELECT 1').get(); c.json(200, { ok: true }); }, { auth: false });   // فحص صحة للاستضافة
-  r.add('GET', '/api/me', (c) => c.json(200, { user: c.user ? publicUser(db, c.user) : null, university: universityName(db, cfg), site: getSite(deps), transcriptTemplate: getTranscriptTemplate(db) }), { auth: false });
+  r.add('GET', '/api/me', (c) => c.json(200, { user: c.user ? publicUser(db, c.user) : null, university: universityName(db, cfg), site: getSite(deps), limits: publicLimits(db), transcriptTemplate: getTranscriptTemplate(db) }), { auth: false });
   r.add('PUT', '/api/transcript-template', (c) => { if (!c.user.can('program:manage') && !c.user.can('request:decide')) throw new HttpError(403, 'لا تملك صلاحية هذا الإجراء.', 'forbidden'); c.json(200, { transcriptTemplate: setTranscriptTemplate(deps, c.user, c.body?.template, c.ip) }); });
 
+  r.add('GET', '/api/admin/general', (c) => { need(c, 'settings:manage'); c.json(200, listSettings(db)); });
+  r.add('PUT', '/api/admin/general', (c) => { need(c, 'settings:manage'); c.json(200, saveSettings(deps, c.user, c.body, c.ip)); });
+  r.add('POST', '/api/admin/general/reset', (c) => { need(c, 'settings:manage'); c.json(200, resetSettings(deps, c.user, c.body, c.ip)); });
   r.add('GET', '/api/me/desk', (c) => { if (c.user.role === 'student') throw new HttpError(403, 'خاص بالعاملين.', 'forbidden'); c.json(200, { desk: deskSummary(deps, c.user) }); });
   r.add('GET', '/api/me/profile', (c) => { need(c, 'profile:read_own'); c.json(200, { profile: myProfile(deps, c.user) }); });
 
@@ -201,6 +207,36 @@ export function buildRouter(deps) {
   r.add('PUT', '/api/admin/programs/:id', (c) => { need(c, 'program:manage'); updateProgram(deps, c.user, c.params.id, c.body, c.ip); c.json(200, { ok: true }); });
   r.add('DELETE', '/api/admin/programs/:id', (c) => { need(c, 'program:manage'); deleteProgram(deps, c.user, c.params.id, c.ip); c.json(200, { ok: true }); });
   r.add('POST', '/api/admin/programs/:id/toggle', (c) => { need(c, 'program:manage'); toggleProgram(deps, c.user, c.params.id, !!c.body.enabled, c.ip); c.json(200, { ok: true }); });
+
+  // ---- أعضاء هيئة التدريس (وحدة 5.6): السجل والعبء التدريسي ----
+  r.add('GET', '/api/faculty', (c) => {
+    if (!c.user.can('faculty:manage') && !c.user.can('course:manage')) throw new HttpError(403, 'لا تملك صلاحية هذا الإجراء.', 'forbidden');
+    c.json(200, listFaculty(deps, c.query));
+  });
+  r.add('POST', '/api/faculty', (c) => { need(c, 'faculty:manage'); c.json(201, createFaculty(deps, c.user, c.body, c.ip)); });
+  r.add('PUT', '/api/faculty/:id', (c) => { need(c, 'faculty:manage'); c.json(200, updateMember(deps, c.user, c.params.id, c.body, c.ip)); });
+  r.add('POST', '/api/faculty/:id/toggle', (c) => { need(c, 'faculty:manage'); c.json(200, toggleMember(deps, c.user, c.params.id, !!c.body.enabled, c.ip)); });
+  r.add('DELETE', '/api/faculty/:id', (c) => { need(c, 'faculty:manage'); deleteMember(deps, c.user, c.params.id, c.ip); c.json(200, { ok: true }); });
+
+  // ---- الموارد البشرية والرواتب (وحدة 5.7) ----
+  r.add('GET', '/api/admin/hr/employees', (c) => { need(c, 'hr:manage'); c.json(200, listEmployees(deps.db, c.query)); });
+  r.add('POST', '/api/admin/hr/employees', (c) => { need(c, 'hr:manage'); c.json(201, createEmployee(deps.db, c.user, c.body, c.ip)); });
+  r.add('GET', '/api/admin/hr/employee/:id', (c) => { need(c, 'hr:manage'); c.json(200, getEmployee(deps.db, c.params.id, c.query)); });
+  r.add('PUT', '/api/admin/hr/employee/:id', (c) => { need(c, 'hr:manage'); c.json(200, updateEmployee(deps.db, c.user, c.params.id, c.body, c.ip)); });
+  r.add('POST', '/api/admin/hr/employee/:id/toggle', (c) => { need(c, 'hr:manage'); c.json(200, toggleEmployeeStatus(deps.db, c.user, c.params.id, !!c.body.enabled, c.ip)); });
+  r.add('DELETE', '/api/admin/hr/employee/:id', (c) => { need(c, 'hr:manage'); c.json(200, deleteEmployee(deps.db, c.user, c.params.id, c.ip)); });
+  r.add('GET', '/api/admin/hr/salaries', (c) => { need(c, 'hr:manage'); c.json(200, listSalaries(deps.db, c.query)); });
+  r.add('POST', '/api/admin/hr/salaries', (c) => { need(c, 'hr:manage'); c.json(201, createSalaryRecord(deps.db, c.user, Number(c.body.employee_id), Number(c.body.amount), c.body.effective_at ? Number(c.body.effective_at) : Date.now(), c.ip)); });
+  r.add('GET', '/api/admin/hr/salary/:employeeId/latest', (c) => { need(c, 'hr:manage'); c.json(200, { salary: latestSalary(deps.db, Number(c.params.employeeId)) }); });
+  r.add('GET', '/api/admin/hr/leaves', (c) => { need(c, 'hr:manage'); c.json(200, listLeaves(deps.db, c.query)); });
+  r.add('POST', '/api/admin/hr/leaves', (c) => { need(c, 'hr:manage'); c.json(201, createLeaveRequest(deps.db, c.user, c.body, c.ip)); });
+  r.add('GET', '/api/admin/hr/leave/:id', (c) => { need(c, 'hr:manage'); c.json(200, getLeave(deps.db, c.params.id)); });
+  r.add('POST', '/api/admin/hr/leave/:id/approve', (c) => { need(c, 'hr:manage'); c.json(200, approveLeaveRequest(deps.db, c.user, c.params.id, c.ip)); });
+  r.add('POST', '/api/admin/hr/leave/:id/reject', (c) => { need(c, 'hr:manage'); c.json(200, rejectLeaveRequest(deps.db, c.user, c.params.id, c.body.reason, c.ip)); });
+  r.add('POST', '/api/admin/hr/leave/:id/cancel', (c) => { need(c, 'hr:manage'); c.json(200, cancelLeaveRequest(deps.db, c.user, c.params.id, c.ip)); });
+  r.add('GET', '/api/admin/hr/contracts', (c) => { need(c, 'hr:manage'); c.json(200, listContracts(deps.db, c.query)); });
+  r.add('POST', '/api/admin/hr/contracts', (c) => { need(c, 'hr:manage'); c.json(201, createContract(deps.db, c.user, c.body, c.ip)); });
+  r.add('GET', '/api/admin/hr/options', (c) => { need(c, 'hr:manage'); c.json(200, listOptions(deps.db)); });
 
   // ---- الخدمات والطلبات ----
   r.add('GET', '/api/services', (c) => {

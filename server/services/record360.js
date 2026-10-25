@@ -1,7 +1,7 @@
 // سجل الطالب الموحّد 360°: ملف الطالب + الخلاصة الأكاديمية + العلامات + الطلبات + العقوبات + حضور القاعات + تعارض الجداول
 import { log } from '../lib/logger.js';
 import { getStudent } from './students.js';
-import { gradesFor, PASS_MARK } from './academics.js';
+import { gradesFor, passMark } from './academics.js';
 import { detectScheduleConflicts } from './schedule.js';
 
 // المعدل التراكمي: متوسط أحدث محاولة معتمدة لكل مقرر موزونة بالساعات
@@ -33,7 +33,7 @@ export function getUnifiedStudentRecord(deps, id) {
   }, { scored: [], rank: null });
   const failed = me.grades.filter((x) => !x.passed).length;
   let academicAlert = null;
-  if (me.gpa !== null && me.gpa < PASS_MARK) academicAlert = { level: 'danger', label: 'إنذار أكاديمي', message: `المعدل التراكمي ${me.gpa}% أقل من حد النجاح (${PASS_MARK}%).` };
+  if (me.gpa !== null && me.gpa < passMark(db)) academicAlert = { level: 'danger', label: 'إنذار أكاديمي', message: `المعدل التراكمي ${me.gpa}% أقل من حد النجاح (${PASS_MARK}%).` };
   else if (failed) academicAlert = { level: 'warning', label: 'مقررات راسبة', message: `لدى الطالب ${failed} مقرر/مقررات لم ينجح فيها بعد.` };
   const requests = safe(warnings, 'الطلبات', () => db.prepare(`SELECT r.id, r.no, r.status, r.created_at createdAt, st.label service FROM requests r LEFT JOIN service_types st ON st.code = r.service_code WHERE r.student_id = ? ORDER BY r.created_at DESC LIMIT 20`).all(sid), []);
   const holds = safe(warnings, 'العقوبات', () => db.prepare('SELECT id, hold_type type, note, created_at createdAt FROM student_holds WHERE student_id = ? AND active = 1 ORDER BY id DESC').all(sid), []);

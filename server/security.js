@@ -25,8 +25,8 @@ export async function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(key, Buffer.from(hash, 'base64'));
 }
 
-export function validatePasswordPolicy(pw) {
-  if (typeof pw !== 'string' || pw.length < 10) return 'كلمة المرور يجب ألا تقل عن 10 أحرف.';
+export function validatePasswordPolicy(pw, minLen = 10) {
+  if (typeof pw !== 'string' || pw.length < minLen) return `كلمة المرور يجب ألا تقل عن ${minLen} أحرف.`;
   if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) return 'كلمة المرور يجب أن تحوي أحرفاً وأرقاماً.';
   return null;
 }

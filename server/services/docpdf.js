@@ -8,7 +8,7 @@ import { buildPdf, prepareSigning, textWidth } from '../lib/pdf.js';
 import { signDetached, sha256 } from './pki.js';
 import { identityOf, publicBase } from './enrollcert.js';
 import { paintTranscript } from './transcriptpdf.js';
-import { getTranscriptTemplate, TRANSCRIPT_TEMPLATES } from './site.js';
+import { headerLines, getTranscriptTemplate, TRANSCRIPT_TEMPLATES } from './site.js';
 
 const G = '#054239', GOLD = '#C9A24B', MUTE = '#566660', R = 545, L = 50;
 const utc = (ms) => new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
@@ -60,12 +60,12 @@ function transcriptTable(d, p, top, bottom) {
   d.text(`المعدل المرجَّح: ${p.transcript.average ?? '-'} من 100${gr.length > MAX ? ` — عُرض أول ${MAX} مقرراً من ${gr.length}` : ''}`, { x: R, y: endY - 8, size: 11, font: 'bold', color: G });
 }
 
-function paint(d, doc, url, qr, ident, signedAt) {
+function paint(d, doc, url, qr, ident, signedAt, hdr) {
   const p = doc.payload, cn = ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? ident.leaf.subject;
   d.fill(G); d.rect(0, 742, 595.28, 100); d.fill(GOLD); d.rect(0, 738, 595.28, 4);
   d.image(478, 752, 68, 82);
   d.text(p.university, { x: 465, y: 800, size: 21, font: 'bold', color: '#FFFFFF' });
-  d.text('وزارة الداخلية — قسم شؤون الطلاب', { x: 465, y: 774, size: 12, color: '#E6CB84' });
+  d.text(hdr.line, { x: 465, y: 774, size: 12, color: '#E6CB84' });
   d.text(p.service.label, { x: 297.6, y: 700, size: 24, font: 'bold', color: G, align: 'center' });
   d.stroke(GOLD); d.line(190, 688, 405, 688, 1.5);
   const rows = [['اسم الطالب', p.student.name], ['الرقم الجامعي', p.student.studentNo], ['البرنامج', p.student.program], ['رقم الطلب', p.requestNo], ['تاريخ الإصدار', utc(p.issuedAt)]];
@@ -96,7 +96,7 @@ export function documentPdf(deps, user, rawCode, template) {
   try { return { pdf: fs.readFileSync(file), filename: `${doc.code}${tpl ? '-' + tpl : ''}.pdf` }; } catch { /* لم يُنشأ بعد */ }
   const ident = identityOf(cfg), url = `${publicBase(cfg)}/?verify=${doc.code}`, qr = makeQr(url);
   const raw = buildPdf({ family: tpl ? (tpl === 'academic' || tpl === 'royal' ? 'amiri' : 'cairo') : 'dejavu', title: `${doc.payload.service.label} — ${doc.payload.student.name}`, author: doc.payload.university, subject: `${doc.payload.service.label} — ${doc.payload.requestNo}`, producer: 'الجامعة السورية للعلوم الأمنية', created,
-    signer: { name: ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? 'signer', reason: 'Approved student document', location: 'SY' } }, (d) => (tpl ? paintTranscript(d, doc, tpl, { url, qr, signedAt: created, signer: ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? ident.leaf.subject }) : paint(d, doc, url, qr, ident, created)));
+    signer: { name: ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? 'signer', reason: 'Approved student document', location: 'SY' } }, (d) => (tpl ? paintTranscript(d, doc, tpl, { url, qr, signedAt: created, hdr: headerLines(db), signer: ident.leaf.subject.match(/CN=([^,]+)/)?.[1] ?? ident.leaf.subject }) : paint(d, doc, url, qr, ident, created, headerLines(db))));
   const prep = prepareSigning(raw), { cms } = signDetached(ident, prep.digest, { signingTime: created }), pdf = prep.finish(cms);
   fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(file, pdf);
   db.prepare('INSERT OR IGNORE INTO document_pdfs (pdf_sha256, code, created_at) VALUES (?, ?, ?)').run(sha256(pdf).toString('hex'), doc.code, Date.now());

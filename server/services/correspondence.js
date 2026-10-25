@@ -8,9 +8,10 @@ import { sha256 } from '../security.js';
 import { HttpError } from '../http.js';
 import { detectMime } from './requests.js';
 import { notify } from './push.js';
+import { getSetting } from './settings.js';
 
 const bad = (m, s = 400) => new HttpError(s, m, 'validation');
-const MAX_APPROVERS = 12, MAX_FILES = 5, MAX_TOTAL = 8 * 1024 * 1024;
+const maxApprovers = (db) => getSetting(db, 'corr.max_approvers'), maxFiles = (db) => getSetting(db, 'corr.max_files');
 const pad = (n, w) => String(n).padStart(w, '0');
 const clean = (s, max) => String(s ?? '').replace(/\r/g, '').trim().slice(0, max);
 
@@ -53,15 +54,16 @@ export function docView(db, d, user) {
   };
 }
 
-function readFiles(cfg, raw) {
+function readFiles(db, cfg, raw) {
+  const MAX_FILES = maxFiles(db), MAX_ONE = getSetting(db, 'requests.max_attachment_mb', Math.round(cfg.maxAttachmentBytes / 1048576)) * 1048576, MAX_TOTAL = getSetting(db, 'requests.max_total_mb') * 1048576;
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw) || raw.length > MAX_FILES) throw bad(`المرفقات: حتى ${MAX_FILES}.`);
   let total = 0;
   return raw.map((a) => {
     if (!a || typeof a.data !== 'string' || typeof a.name !== 'string') throw bad('مرفق غير صالح.');
     const buf = Buffer.from(a.data, 'base64');
-    if (!buf.length || buf.length > cfg.maxAttachmentBytes) throw new HttpError(413, 'حجم المرفق الواحد يجب ألا يتجاوز 2 ميغابايت.', 'too_large');
-    total += buf.length; if (total > MAX_TOTAL) throw new HttpError(413, 'مجموع المرفقات يجب ألا يتجاوز 8 ميغابايت.', 'too_large');
+    if (!buf.length || buf.length > MAX_ONE) throw new HttpError(413, `حجم المرفق الواحد يجب ألا يتجاوز ${MAX_ONE / 1048576} ميغابايت.`, 'too_large');
+    total += buf.length; if (total > MAX_TOTAL) throw new HttpError(413, `مجموع المرفقات يجب ألا يتجاوز ${MAX_TOTAL / 1048576} ميغابايت.`, 'too_large');
     const mime = detectMime(buf); if (!mime) throw new HttpError(415, 'المرفقات المسموحة: PDF أو PNG أو JPG.', 'bad_type');
     return { buf, mime, name: path.basename(a.name).replace(/[^\p{L}\p{N}._ -]/gu, '_').slice(0, 100) || 'file' };
   });
@@ -73,11 +75,11 @@ function parse(db, user, input) {
   const mode = input?.mode === 'sequential' ? 'sequential' : 'parallel';
   const list = Array.isArray(input?.approvers) ? input.approvers.map(Number) : [];
   if (!list.length) throw bad('اختر معتمداً واحداً على الأقل.');
-  if (list.length > MAX_APPROVERS) throw bad(`المعتمدون: حتى ${MAX_APPROVERS}.`);
+  if (list.length > maxApprovers(db)) throw bad(`المعتمدون: حتى ${maxApprovers(db)}.`);
   if (new Set(list).size !== list.length) throw bad('لا يجوز تكرار المعتمد.');
   for (const id of list) { if (id === user.id) throw bad('لا يجوز اختيار نفسك معتمداً.'); if (!staffUser(db, id)) throw bad('معتمد غير صالح أو غير فعّال.'); }
   const cc = Array.isArray(input?.cc) ? input.cc.map(Number) : [];
-  if (cc.length > MAX_APPROVERS) throw bad(`نسخة إلى: حتى ${MAX_APPROVERS}.`);
+  if (cc.length > maxApprovers(db)) throw bad(`نسخة إلى: حتى ${maxApprovers(db)}.`);
   if (new Set(cc).size !== cc.length) throw bad('لا يجوز تكرار المستلم في النسخة.');
   for (const id of cc) { if (id === user.id) throw bad('لا حاجة لإرسال نسخة إلى نفسك.'); if (list.includes(id)) throw bad('الشخص معتمد بالفعل ولا يضاف في النسخة.'); if (!staffUser(db, id)) throw bad('مستلم نسخة غير صالح أو غير فعّال.'); }
   return { title, subject, body, mode, approvers: list, cc };
@@ -98,12 +100,12 @@ function send(deps, user, d) {
 
 export function createDoc(deps, user, input, ip) {
   const { db, cfg } = deps;
-  const v = parse(db, user, input), files = readFiles(cfg, input?.files);
+  const v = parse(db, user, input), files = readFiles(db, cfg, input?.files);
   const stored = [];
   try {
     const id = tx(db, () => {
       const n = db.prepare('SELECT COALESCE(MAX(id),0)+1 n FROM corr_docs').get().n;
-      const no = `COR-${new Date().getFullYear()}-${pad(n, 5)}`;
+      const no = `${getSetting(db, 'corr.no_prefix')}-${new Date().getFullYear()}-${pad(n, 5)}`;
       db.prepare("INSERT INTO corr_docs (id, no, title, subject, body, mode, status, creator_id, unit_id, created_at) VALUES (?,?,?,?,?,?,'draft',?,?,?)")
         .run(n, no, v.title, v.subject, v.body, v.mode, user.id, user.unit_id ?? null, Date.now());
       v.approvers.forEach((u, i) => db.prepare('INSERT INTO corr_approvers (doc_id, user_id, seq) VALUES (?,?,?)').run(n, u, i + 1));
@@ -140,8 +142,8 @@ export function updateDoc(deps, user, id, input, ip) {
     approvers: has('approvers') ? input.approvers : oldA, cc: has('cc') ? input.cc : ccIds(db, d.id) });
   const remove = Array.isArray(input?.removeFiles) ? input.removeFiles.map(Number) : [];
   const keep = db.prepare('SELECT * FROM corr_files WHERE doc_id = ?').all(d.id), gone = keep.filter((f) => remove.includes(f.id));
-  const files = readFiles(cfg, input?.files);
-  if (keep.length - gone.length + files.length > MAX_FILES) throw bad(`المرفقات: حتى ${MAX_FILES}.`);
+  const files = readFiles(db, cfg, input?.files);
+  if (keep.length - gone.length + files.length > maxFiles(db)) throw bad(`المرفقات: حتى ${maxFiles(db)}.`);
   const stored = [];
   try {
     tx(db, () => {

@@ -28,7 +28,7 @@ export const STRUCTURE = [
   { code: 'exams', name: 'الامتحانات والعلامات', kind: 'department', parent: U, module: 'وحدة الامتحانات', label: 'مسؤول الامتحانات والعلامات',
     desc: 'جداول الامتحانات، القاعات، رصد وتدقيق العلامات، النتائج.', perms: ['grade:manage', 'grade:approve', 'attendance:manage', 'student:read', 'stats:read', 'request:read_unit', 'request:forward'] },
   { code: 'academic', name: 'الشؤون الأكاديمية', kind: 'department', parent: U, module: 'وحدة الشؤون الأكاديمية', label: 'مسؤول الشؤون الأكاديمية',
-    desc: 'الخطط والمقررات والجداول والعبء التدريسي.', perms: ['course:manage', 'program:manage', 'student:read', 'stats:read', ...INBOX] },
+    desc: 'الخطط والمقررات والجداول والعبء التدريسي وإدارة أعضاء هيئة التدريس.', perms: ['course:manage', 'program:manage', 'faculty:manage', 'student:read', 'stats:read', ...INBOX] },
   { code: 'hr', name: 'الموارد البشرية', kind: 'department', parent: U, module: 'وحدة الموارد البشرية', label: 'مسؤول الموارد البشرية',
     desc: 'التوظيف، العقود، الحضور، الإجازات، الرواتب، الأداء، التدريب.', perms: INBOX },
   { code: 'finance', name: 'المالية والحسابات', kind: 'department', parent: U, module: 'وحدة المالية', label: 'مسؤول المالية والحسابات',
@@ -85,7 +85,7 @@ export const STRUCTURE = [
     perms: ['holds:manage', 'student:read', 'request:read_unit'] },
 ].map((n) => {
   const perms = [...n.perms];
-  for (const p of [INTERNAL, 'request:import', 'corr:use', 'staffatt:self', ...(n.code === 'hr' ? ['staffatt:manage'] : [])]) if (!perms.includes(p)) perms.push(p);
+  for (const p of [INTERNAL, 'request:import', 'corr:use', 'staffatt:self', ...(n.code === 'hr' ? ['staffatt:manage', 'hr:manage'] : [])]) if (!perms.includes(p)) perms.push(p);
   // من تصله طلبات وحدته (read_unit) يبتّ فيها، وإلا بقيت معلّقة في صندوق لا يقرّر أحد فيه
   if (perms.includes('request:read_unit') && !perms.includes('request:decide')) perms.push('request:decide');
   return { ...n, perms };

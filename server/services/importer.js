@@ -4,13 +4,14 @@ import { readXlsx, writeXlsx } from '../lib/xlsx.js';
 import { parseSql, parseCsv } from '../lib/sqlparse.js';
 import { tx } from '../db.js';
 import { audit } from '../audit.js';
+import { getSetting } from './settings.js';
 import { HttpError } from '../http.js';
 import { sections, validateProfile, duplicateCheck, registerStudent } from './students.js';
 import { enterGrade } from './academics.js';
 import { importLogRow } from './attendance.js';
 import { notify } from './push.js';
 
-export const MAX_BYTES = 10 * 1024 * 1024, MAX_STUDENTS = 1500;
+export const MAX_BYTES = 10 * 1024 * 1024;
 const bad = (m) => new HttpError(400, m, 'validation');
 
 const norm = (s) => String(s ?? '').replace(/[\u064B-\u065F\u0670\u0640]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/\*/g, '').replace(/[\s_\-./()،:]+/g, '').toLowerCase();
@@ -138,6 +139,7 @@ function studentInput(db, r, resolve) {
 }
 
 async function importStudents({ db, cfg }, actor, rows, commit, ip) {
+  const MAX_STUDENTS = getSetting(db, 'students.import_max_rows');
   if (rows.length > MAX_STUDENTS) throw bad(`الحد الأقصى ${MAX_STUDENTS} طالب في الملف الواحد؛ قسّم الملف.`);
   const resolve = programResolver(db), errors = [], seenNid = new Map(), ok = [], creds = [];
   for (const r of rows) {
