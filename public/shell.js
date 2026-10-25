@@ -34,7 +34,7 @@
     out: '<path d="M15 4.5h4.5v15H15"/><path d="M10.5 8l-4 4 4 4M6.5 12h10"/>',
   };
   const ico = (n, s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[n] || ''}</svg>`;
-  const NAV_ICON = { desk: 'users', overview: 'grid', home: 'grid', guide: 'book', grades: 'chart', tx: 'file', affairs: 'users', dashboard: 'chart', academics: 'book', comms: 'news', exchange: 'upload', internal: 'file', corr: 'news', hr: 'users', payroll: 'users', settings: 'settings', units: 'layers', import: 'upload', export: 'download', attendance: 'scan', admin: 'settings', access: 'shield', audit: 'file', verify: 'check' };
+  const NAV_ICON = { desk: 'users', overview: 'grid', home: 'grid', guide: 'book', grades: 'chart', tx: 'file', affairs: 'users', dashboard: 'chart', academics: 'book', comms: 'news', exchange: 'upload', internal: 'file', corr: 'news', hr: 'users', payroll: 'users', procurement: 'layers', finance: 'layers', settings: 'settings', units: 'layers', import: 'upload', export: 'download', attendance: 'scan', admin: 'settings', access: 'shield', audit: 'file', verify: 'check' };
   const PARENT = { site: 'admin', services: 'admin' };
   /* مجموعات القائمة الجانبية: عناوين تعكس الوحدات السبع عشرة في وثيقة «نظام ERP جامعي متكامل» (5.1–5.17).
      ترتيب viewsFor متجاور داخل المجموعة نفسها. */
@@ -42,7 +42,7 @@
     desk: 'الرئيسية', overview: 'الرئيسية',
     affairs: 'الطلاب والخدمات', internal: 'الطلاب والخدمات',
     academics: 'الأكاديمي والامتحانات', attendance: 'الأكاديمي والامتحانات',
-    hr: 'الموارد البشرية والمراسلات', payroll: 'الموارد البشرية والمراسلات', corr: 'الموارد البشرية والمراسلات',
+    hr: 'الموارد البشرية والمراسلات', payroll: 'الموارد البشرية والمراسلات', corr: 'الموارد البشرية والمراسلات', procurement: 'المشتريات والمالية', finance: 'المشتريات والمالية',
     dashboard: 'التقارير والبيانات', exchange: 'التقارير والبيانات',
     comms: 'التواصل والإشعارات',
     admin: 'النواة والحوكمة', access: 'النواة والحوكمة', audit: 'النواة والحوكمة',

@@ -2,7 +2,7 @@
 import { createApp } from '../server/app.js';
 import { checkReadiness } from '../server/services/readiness.js';
 
-const app = createApp({ backupAuto: false });
+const app = await createApp({ backupAuto: false });
 const ICON = { ok: '✔', warn: '⚠', fail: '✘' };
 const res = checkReadiness(app);
 for (const c of res) console.log(`${ICON[c.level]} [${c.id}] ${c.msg}`);

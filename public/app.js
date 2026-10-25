@@ -63,6 +63,8 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
     if (can('holds:manage') || can('rules:manage') || can('program:manage') || can('backup:manage') || can('settings:manage')) v.push(['admin', 'الإدارة']);
     if (can('user:manage') || can('role:manage')) v.push(['access', 'الحسابات والصلاحيات']);
     if (can('audit:read')) v.push(['audit', 'التدقيق']);
+    if (can('finance:read') || can('finance:entry') || can('finance:fees') || can('finance:setup')) v.push(['finance', 'المالية والمحاسبة']);
+    if (can('procurement:read') || can('procurement:request') || can('procurement:manage') || can('procurement:stock') || can('procurement:assets')) v.push(['procurement', 'المشتريات والمخازن']);
     return [...v, ['units', 'وحدات النظام'], ['verify', 'التحقق العام']];
   }
 
@@ -379,6 +381,14 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
     if (S.me && S.me.mustChange) { app.innerHTML = mustChangeView(); return; }
     if (S.me && S.me.role === 'student') { app.innerHTML = UA.studentShell(); return; }
     const v = S.view === 'verify' ? verifyView : (UA.views[S.view] || BUILTIN[S.view] || (() => ''));
+    // التبويبات ذات الواجهة التفاعلية (تُعيد تهيئة DOM مباشرةً)
+    if (typeof v === 'function' && v.length >= 1 && UA.views[S.view]) {
+      const wrap = document.createElement('div');
+      app.innerHTML = UA.shell ? UA.shell('<div id="ua-view-mount"></div>') : header() + '<main><div id="ua-view-mount"></div></main></div>' + siteFoot();
+      const mount = app.querySelector('#ua-view-mount') || app;
+      UA.views[S.view](mount, S.me);
+      return;
+    }
     app.innerHTML = UA.shell ? UA.shell(v()) : header() + '<main>' + v() + '</main></div>' + siteFoot();
   }
   async function loadFor(view) {

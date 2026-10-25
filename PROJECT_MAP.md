@@ -3,10 +3,10 @@
 
 ## [TECH_STACK]
 - Runtime: Node ≥ 22.5 (مُختبَر على v22.22.0) — `node:sqlite` المدمج، `node:http`، `node:test`. **صفر اعتماديات npm للإنتاج** (لا `node_modules` مطلوب للتشغيل).
-- DB: SQLite ملف واحد (`data/uni-erp.db`) + ترحيلات تسلسلية `server/migrations/NNN_*.sql` (آخرها 012).
-- Front: Vanilla JS (IIFE تُلحق بـ `window.UA`)، CSS واحد `public/style.css`، RTL، خط Cairo محلي، CSP صارم (`script-src 'self'`)، PWA (`sw.js`).
+- DB: SQLite ملف واحد (`data/uni-erp.db`) + ترحيلات تسلسلية `server/migrations/NNN_*.sql` (آخرها 023).
+- Front: Vanilla JS (IIFE تُلحق بـ `window.UA`)، CSS واحد `public/style.css`، RTL، خط Cairo محلي، CSP صارم (`script-src 'self'`)، PWA (`sw.js` `v34`).
 - مكتبات مكتوبة داخلياً: PDF/A + توقيع CMS (`lib/pdf.js`, `pki.js`)، XLSX/DOCX/ZIP، QR، Code128، Web Push (VAPID).
-- اختبارات: `npm test` ← 182 اختباراً (خادم/API، منها 2 لفحص أصل الطلب ورؤوس الأمان) + `test/ui.test.js` (Playwright اختياري، يُتخطّى تلقائياً إن غاب؛ مسار بديل `PLAYWRIGHT_MODULE`).
+- اختبارات: `npm test` ← 202 اختباراً (خادم/API، منها 19 لوحدة المالية والمحاسبة، و2 لفحص أصل الطلب ورؤوس الأمان) + `test/ui.test.js` (Playwright اختياري، يُتخطّى تلقائياً إن غاب؛ مسار بديل `PLAYWRIGHT_MODULE`).
 - الإصدارات: لا اعتماديات تحتاج توثيق/تحديث؛ Playwright أداة اختبار فقط ولا يدخل `package.json`.
 - Env: `PORT HOST DB_PATH UPLOAD_DIR LOG_DIR LOG_LEVEL(error|warn|info) UNIVERSITY_NAME PUBLIC_URL COOKIE_SECURE TRUST_PROXY TSA_URL BACKUP_* VAPID_* SIGNING_KEY`.
 
@@ -102,3 +102,19 @@ public/*.js  ── fetch ──►  server/http.js (CSP، حدود، جلسات
 - `020_faculty.sql` + `services/faculty.js` + `public/faculty.js` (تبويب «أعضاء هيئة التدريس» في المواد والعلامات، إسناد المقررات `courses.member_id` والعبء التدريسي) — صلاحية `faculty:manage`.
 - `021_hr_tables.sql` + `services/hr.js` + `public/payroll.js` (عرض `payroll` «الموظفون والرواتب»: الموظفون والرواتب والإجازات والعقود، `hr:manage`). منفصل عن «الحضور والإجازات» (`hr`، موظفو النظام وطلبات الإجازة).
 - `public/units.js`: فهرس الوحدات 5.1–5.17 بحالتها، وقائمة جانبية مجمّعة بعناوين المجموعات (`NAV_GROUP` في shell.js).
+
+## المالية والمحاسبة — وحدة متكاملة (v10 · 2026-10-25)
+- **الخلفية** `server/services/finance/`: `core.js` (القيود المزدوجة، دليل الحسابات، السنوات، العملات، الأطراف، مراكز الكلفة) + `reports.js` (ميزان المراجعة، دفتر الأستاذ، قائمة الدخل، الميزانية، الصندوق، مراكز الكلفة، كشف طرف) + `fees.js` (رسوم الطلاب، المدفوعات، أنواع الرسوم، إغلاق السنة، قيد الرواتب) + `routes.js` (54 نقطة API).
+- **الترحيلات** `022_finance.sql` (16 جدول: `fin_years/accounts/entries/entry_lines/parties/cost_centers/currencies/account_audit/fee_types/student_charges/student_payments`…) — حسابات مبذرة (الأصول/الخصوم/حقوق الملكية/الإيرادات/المصروفات/الرسوم/الصندوق/البنك/المرتبات) + سنة مالية مفتوحة + عملة أساسية.
+- **المبادئ المحاسبية**: القيد المزدوج (مدين = دائن إجباري)، دورة حياة القيد (draft → posted)، عكس القيد بقيد معاكس موثّق، تسلسل الأرقام `TYPE-YEAR-NNNNN`، `source` لمنع التكرار، `system_key` للبحث الوظيفي.
+- **الصلاحيات** 5: `finance:read` · `finance:entry` · `finance:post` · `finance:setup` · `finance:fees`؛ `fees:read_own` للطالب (`/api/me/fees`).
+- **الواجهة** `public/finance.js` (770 سطراً، RTL عربي كامل): 7 تبويبات — لوحة المعلومات (KPI) · القيود اليومية (إنشاء/تعديل/ترحيل/عكس) · دليل الحسابات (شجرة مع CRUD) · التقارير (7 تقارير + تصدير Excel) · رسوم الطلاب (رسوم/مدفوعات/أنواع/كشف الطالب) · الإعداد (سنوات/عملات/مراكز كلفة/أطراف) · رسومي (الطالب ذاتياً). يعمل بنمط `UA.views.finance(el, user)` المبني في `app.js`.
+- **الاختبارات** `test/finance.test.js` — 19 اختباراً: API كامل (نظرة عامة، حسابات، سنوات، عملات، قيود، ترحيل، عكس، تقارير، رسوم، أطراف، مراكز كلفة، صلاحيات، بوابة الطالب). جميعها تجتاز في `npm test`.
+- **sw.js** `v33` + `finance.js` في PRECACHE.
+
+## المشتريات والمخازن والأصول — وحدة 5.10 (v11 · 2026-10-25)
+- **الترحيل** `023_procurement.sql` (14 جدول: `proc_warehouses/suppliers/categories/items/requests/request_lines/orders/order_lines/receipts/receipt_lines/issues/issue_lines/assets/asset_moves`) + فئات افتراضية (قرطاسية، أجهزة، أثاث، مختبرات…). الأعداد الصحيحة للمخزون والتكاليف.
+- **الخدمات** `server/services/procurement/`: `core.js` (329 سطراً) — مخازن/موردون/تصنيفات/أصناف (low-stock)، طلبات شراء (draft→pending→approved/rejected→ordered→cancelled، تحرير المسودة، تسلسل `PRQ-YYYY-NNNNN`)، أوامر توريد (draft→ordered→received→cancelled، `PO-YYYY-NNNNN`، ربط اختياري بالطلب)، استلام توريد (يزيد الرصيد بمتوسط تكلفة مرجح)، صرف مخزني (ينقص الرصيد، `IS-YYYY-NNNNN`)، أصول ثابتة + حركات (نقل/صيانة/إعادة/استبعاد)، نظرة عامة KPI — + `routes.js` (37 مساراً + تصدير `items.xlsx`).
+- **الصلاحيات** 5: `procurement:read` · `procurement:request` · `procurement:manage` · `procurement:stock` · `procurement:assets` (في صفحة «الحسابات والصلاحيات» بمجموعة «المشتريات والمخازن والأصول»).
+- **القائمة** `public/app.js:viewsFor` بند «المشتريات والمخازن» → `procurement` يظهر لمن يملك أياً من الخمس. `NAV_GROUP` في `shell.js` تحت مجموعة «المشتريات والمالية» مع المالية. `NAV_ICON.procurement = layers`.
+- **الواجهة** `public/procurement.js` (RTL كامل): 8 تبويبات — نظرة عامة (KPIs) · المستودعات · الموردون · الأصناف والمخزون (low-stock + تصدير) · طلبات الشراء (مع بنود وتقديم/اعتماد/رفض/تحويل لأمر توريد) · أوامر التوريد (إرسال/استلام) · الحركة المخزنية (صرف + سجل الاستلام) · الأصول الثابتة (حركات). `sw.js` `v34` + `procurement.js` في PRECACHE، `UNITS 5.10 = done`.
