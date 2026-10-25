@@ -27,6 +27,8 @@
   /* ---------- دليل المواد: جدول متكامل بفلترة وترتيب ---------- */
   async function loadCourses() { A.courses = (await api('GET', '/api/courses')).courses; }
   UA.loaders.academics = async () => {
+    // دور مخصص بإدارة هيئة التدريس فقط: يبدأ على تبويب الأعضاء ولا يحتاج برامج/مواد
+    if (A.tab === 'courses' && !UA.can('course:manage') && UA.can('faculty:manage')) A.tab = 'members';
     if (!A.programs.length) A.programs = (await api('GET', '/api/programs')).programs.filter((p) => p.active);
     await loadCourses();
     if (A.tab === 'grades') await loadGrades();
@@ -125,8 +127,9 @@
         <label>البرنامج<select id="ac-nprog"${ce ? ' disabled' : ''} data-mc="prog">${opts(plist.map((p) => [p.id, p.label || p.name]), pid)}</select></label></div>
       <div class="two"><label>السنة الدراسية<select id="ac-nlvl">${opts(lvlList(yrs(pid)), ce ? ce.level : (dr.lvl || 1))}</select></label><label>الفصل<select id="ac-nsem">${opts([[1, 'الأول'], [2, 'الثاني']], ce ? ce.semester : (dr.sem || 1))}</select></label></div>
       <label>اسم المقرر<input id="ac-nname" maxlength="100" required value="${ce ? esc(ce.name) : esc(dr.name || '')}"></label>
-      <div class="two"><label>الساعات<input id="ac-nhours" type="number" min="0" max="12" value="${ce ? ce.hours : (dr.hours || 3)}"></label><label>الرمز (اختياري)<input id="ac-ncode" maxlength="20" dir="ltr" value="${ce ? esc(ce.code || '') : esc(dr.code || '')}"></label></div>
-      <label>المدرّس (اختياري)<input id="ac-ninst" maxlength="80" value="${ce ? esc(ce.instructor || '') : esc(dr.inst || '')}"></label>
+      <div class="two"><label>الساعات<input id="ac-nhours" type="number" min="0" max="${(UA.S.limits || {}).maxCourseHours || 12}" value="${ce ? ce.hours : (dr.hours || (UA.S.limits || {}).defaultCourseHours || 3)}"></label><label>الرمز (اختياري)<input id="ac-ncode" maxlength="20" dir="ltr" value="${ce ? esc(ce.code || '') : esc(dr.code || '')}"></label></div>
+      <label>المدرّس (اختياري)<input id="ac-ninst" maxlength="80"${ce && ce.memberId ? ' readonly' : ''} value="${ce ? esc(ce.instructor || '') : esc(dr.inst || '')}"></label>
+      ${ce && ce.memberId ? '<p class="small" style="margin:4px 0 0">مسند إلى عضو من «أعضاء هيئة التدريس»؛ التعديل والإسناد من هناك.</p>' : ''}
       ${ce ? `<fieldset class="slots"><legend>مواعيد المحاضرات (لكشف تعارض جدول الطالب)</legend>${(m.slots || []).map((sl, i) => `<div class="slot-row"><label>اليوم<select data-slot="day">${opts(DAYN.map((n, k) => [k, n]), sl.day)}</select></label><label>من<input type="time" data-slot="start" value="${esc(sl.start)}"></label><label>إلى<input type="time" data-slot="end" value="${esc(sl.end)}"></label><label>القاعة<input data-slot="hall" maxlength="60" value="${esc(sl.hall || '')}"></label><button class="btn sm bad" type="button" data-act="slotdel" data-i="${i}">حذف</button></div>`).join('') || '<p class="small">لا مواعيد بعد.</p>'}<button class="btn sm" type="button" data-act="slotadd">＋ موعد</button></fieldset>` : '<p class="small">يمكن إضافة مواعيد المحاضرات بعد إنشاء المقرر (تعديل المقرر).</p>'}
       <div class="actions"><button class="btn pri" type="submit">${ce ? 'حفظ التعديل' : 'إضافة المقرر'}</button><button class="btn" type="button" data-act="mclose">إلغاء</button></div></form>`;
   }
@@ -141,9 +144,9 @@
         ${m.msg ? `<div class="okbox" role="status">${esc(m.msg)}</div>` : ''}${m.err ? `<div class="err" role="alert" style="margin-top:12px">${esc(m.err)}</div>` : ''}
         <form class="form" id="acgrade" style="border:0;padding:0;margin-top:10px"><label>المقرر<select id="gr-course" required${edit ? ' disabled' : ''}><option value="">— اختر —</option>${m.courses.map((c) => `<option value="${c.id}"${String(c.id) === String(m.courseId || '') ? ' selected' : ''}>${lvl(c.level)} · ${sem(c.semester)} — ${esc(c.name)}</option>`).join('')}</select></label>
           <div class="two"><label>العام الدراسي<input id="gr-year" value="${esc(m.year || defYear())}" dir="ltr" pattern="\\d{4}/\\d{4}" required${edit ? ' readonly' : ''}></label><span></span></div>
-          <div class="two"><label>العلامة النظرية<input id="gr-th" type="number" min="0" max="100" required value="${m.th ?? ''}"></label><label>العلامة العملية<input id="gr-pr" type="number" min="0" max="100" value="${m.pr ?? ''}"></label></div>
+          <div class="two"><label>العلامة النظرية<input id="gr-th" type="number" min="0" max="${(UA.S.limits || {}).totalMax || 100}" required value="${m.th ?? ''}"></label><label>العلامة العملية<input id="gr-pr" type="number" min="0" max="${(UA.S.limits || {}).practicalMax ?? 100}" value="${m.pr ?? ''}"></label></div>
           ${m.locked ? '<label>تبرير تعديل علامة معتمدة (يُسجَّل في سجل التغييرات)<textarea id="gr-just" rows="2" required minlength="5" maxlength="300"></textarea></label>' : ''}
-          <div class="small">مجموع العلامتين لا يتجاوز 100، والنجاح من 60. إعادة إدخال علامة لنفس المقرر والعام تعدّلها${m.locked ? '، وهذه العلامة معتمدة ومقفلة' : '، وتعديل علامة غير معتمدة يعيدها إلى «مدخلة»'}.</div>
+          <div class="small">مجموع العلامتين لا يتجاوز ${(UA.S.limits || {}).totalMax || 100} (العملي حتى ${(UA.S.limits || {}).practicalMax ?? 100})، والنجاح من ${(UA.S.limits || {}).passMark || 60}. إعادة إدخال علامة لنفس المقرر والعام تعدّلها${m.locked ? '، وهذه العلامة معتمدة ومقفلة' : '، وتعديل علامة غير معتمدة يعيدها إلى «مدخلة»'}.</div>
           <div class="actions"><button class="btn pri" type="submit">${edit ? 'حفظ التعديل' : 'حفظ العلامة'}</button><button class="btn" type="button" data-act="mclose">${edit ? 'إلغاء' : 'إنهاء'}</button></div></form>`;
     }
     return `<h2 id="mttl">${edit ? 'تعديل علامة' : 'إدخال علامات جديدة'}</h2>${body}`;
@@ -152,7 +155,8 @@
     const m = A.modal; if (!m) return '';
     return `<div class="modal-back" data-act="mclose"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mttl">${m.type === 'course' ? courseModal(m) : gradeModal(m)}</div></div>`;
   }
-  UA.views.academics = () => bar([['courses', 'دليل المواد'], ['grades', 'جدول العلامات']], A.tab, 'actab') + (A.tab === 'courses' ? coursesTab() : gradesTab()) + modalHtml();
+  UA.views.academics = () => bar([['courses', 'دليل المواد'], ['grades', 'جدول العلامات'], ...(UA.can('faculty:manage') ? [['members', 'أعضاء هيئة التدريس']] : [])], A.tab, 'actab')
+    + (A.tab === 'courses' ? coursesTab() : A.tab === 'members' && UA.facultyView ? UA.facultyView() : gradesTab()) + modalHtml();
 
   /* ---------- الأحداث ---------- */
   let timer = null;

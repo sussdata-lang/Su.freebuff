@@ -52,17 +52,18 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
     const v = [['desk', 'مكتبي'], ['overview', 'لوحة التحكم']];
     if (can('request:read_all') || can('request:read_unit') || can('student:read') || can('student:register')) v.push(['affairs', can('student:read') || can('student:register') ? 'شؤون الطلاب' : 'الطلبات']);
     if (can('request:create_internal')) v.push(['internal', 'الطلبات الداخلية']);
-    if (can('corr:use') || can('corr:read_all')) v.push(['corr', 'المراسلات']);
-    if (can('staffatt:self') || can('staffatt:manage')) v.push(['hr', 'الحضور والإجازات']);
-    if (can('stats:read')) v.push(['dashboard', 'الإحصاءات']);
-    if (can('course:manage') || can('grade:manage')) v.push(['academics', 'المواد والعلامات']);
-    if (can('news:manage') || can('complaint:manage')) v.push(['comms', 'الأخبار والشكاوى']);
+    if (can('course:manage') || can('grade:manage') || can('faculty:manage')) v.push(['academics', 'المواد والعلامات']);
     if (can('attendance:manage')) v.push(['attendance', 'سجل القاعات']);
+    if (can('staffatt:self') || can('staffatt:manage')) v.push(['hr', 'الحضور والإجازات']);
+    if (can('hr:manage')) v.push(['payroll', 'الموظفون والرواتب']);
+    if (can('corr:use') || can('corr:read_all')) v.push(['corr', 'المراسلات']);
+    if (can('stats:read')) v.push(['dashboard', 'الإحصاءات']);
     if (can('student:register') || can('course:manage') || can('grade:manage') || can('data:export') || can('request:import')) v.push(['exchange', 'الاستيراد والتصدير']);
-    if (can('holds:manage') || can('rules:manage') || can('program:manage') || can('backup:manage')) v.push(['admin', 'الإدارة']);
+    if (can('news:manage') || can('complaint:manage')) v.push(['comms', 'الأخبار والشكاوى']);
+    if (can('holds:manage') || can('rules:manage') || can('program:manage') || can('backup:manage') || can('settings:manage')) v.push(['admin', 'الإدارة']);
     if (can('user:manage') || can('role:manage')) v.push(['access', 'الحسابات والصلاحيات']);
     if (can('audit:read')) v.push(['audit', 'التدقيق']);
-    return [...v, ['verify', 'التحقق العام']];
+    return [...v, ['units', 'وحدات النظام'], ['verify', 'التحقق العام']];
   }
 
   /* ---------- مكوّنات ---------- */
@@ -167,10 +168,11 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
   }
 
   function adminView() {
-    const tabs = [['holds', 'اللجنة التأديبية', can('holds:manage')], ['rules', 'قواعد الفحص الآلي', can('rules:manage')], ['programs', 'الكليات والبرامج', can('program:manage')], ['backup', 'النسخ الاحتياطي', can('backup:manage')], ...(can('rules:manage') && UA.adminCfg ? UA.adminCfg.tabs.map((x) => [x[0], x[1], true]) : [])].filter((t) => t[2]);
+    const tabs = [['general', 'الإعدادات العامة', can('settings:manage') && !!UA.general], ['holds', 'اللجنة التأديبية', can('holds:manage')], ['rules', 'قواعد الفحص الآلي', can('rules:manage')], ['programs', 'الكليات والبرامج', can('program:manage')], ['backup', 'النسخ الاحتياطي', can('backup:manage')], ...(can('rules:manage') && UA.adminCfg ? UA.adminCfg.tabs.map((x) => [x[0], x[1], true]) : [])].filter((t) => t[2]);
     if (!tabs.some((t) => t[0] === S.adminTab)) S.adminTab = tabs[0] ? tabs[0][0] : 'holds';
     const bar = `<div class="sub-tabs">${tabs.map((t) => `<button class="chip" data-act="atab" data-t="${t[0]}" aria-pressed="${S.adminTab === t[0]}">${t[1]}</button>`).join('')}</div>`;
     const a = S.admin;
+    if (S.adminTab === 'general') return bar + UA.general.view();
     if (S.adminTab === 'backup') return bar + UA.backupView();
     if (UA.adminCfg && UA.adminCfg.tabs.some((x) => x[0] === S.adminTab)) return bar + UA.adminCfg.view(S.adminTab);
     if (S.adminTab === 'holds') {
@@ -393,6 +395,7 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
         const g = (perm, url, key) => (can(perm) ? api('GET', url).then((x) => x[key]) : Promise.resolve([]));
         const [holds, rules, pg, fc] = await Promise.all([g('holds:manage', '/api/admin/holds', 'holds'), g('rules:manage', '/api/admin/rules', 'rules'), g('program:manage', '/api/programs', 'programs'), g('program:manage', '/api/faculties', 'faculties')]);
         S.admin = { holds, rules, programs: pg, faculties: fc, backup: can('backup:manage') ? await api('GET', '/api/admin/backups') : null };
+        if (can('settings:manage') && UA.general) await UA.general.load();
       } else if (view === 'audit') { S.audit = (await api('GET', '/api/audit?limit=500')).entries; S.logs = (await api('GET', '/api/admin/logs?limit=300')).entries; }
     } catch (e) { if (e.status !== 401) toast(e.message); }
   }
@@ -498,7 +501,7 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
       }
       else if (a === 'docprint') { document.body.classList.add('print-doc'); window.addEventListener('afterprint', () => document.body.classList.remove('print-doc'), { once: true }); window.print(); }
       else if (a === 'copy') { try { await navigator.clipboard.writeText(d.c); toast('تم نسخ الرمز'); } catch { toast('الرمز: ' + d.c); } }
-      else if (a === 'atab') { S.adminTab = d.t; S.edit = null; if (UA.adminCfg && UA.adminCfg.tabs.some((x) => x[0] === d.t)) await UA.adminCfg.load(d.t); render(); }
+      else if (a === 'atab') { S.adminTab = d.t; S.edit = null; if (d.t === 'general' && UA.general) await UA.general.load(); if (UA.adminCfg && UA.adminCfg.tabs.some((x) => x[0] === d.t)) await UA.adminCfg.load(d.t); render(); }
       else if (a === 'addhold') { await api('POST', '/api/admin/holds', { studentNo: val('h-no'), holdType: val('h-type'), note: val('h-note') }); await loadFor('admin'); render(); toast('سُجّلت العقوبة'); }
       else if (a === 'clearhold') { await api('POST', `/api/admin/holds/${d.id}/clear`, {}); await loadFor('admin'); render(); toast('تمت التسوية'); }
       else if (a === 'rule') { await api('POST', `/api/admin/rules/${d.id}/toggle`, { enabled: d.on === '1' }); await loadFor('admin'); render(); }
@@ -576,7 +579,7 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
   /* ---------- الإقلاع ---------- */
   UA.start = async function start() {
     const params = new URLSearchParams(location.search), code = params.get('verify');
-    try { const r = await api('GET', '/api/me'); S.uni = /[\u0600-\u06FF]/.test(r.university || '') ? r.university : 'الجامعة السورية للعلوم الأمنية'; S.trDefault = r.transcriptTemplate || 'classic'; if (r.user) await afterLogin(r.user); } catch { S.me = null; }
+    try { const r = await api('GET', '/api/me'); S.uni = /[\u0600-\u06FF]/.test(r.university || '') ? r.university : 'الجامعة السورية للعلوم الأمنية'; S.trDefault = r.transcriptTemplate || 'classic'; S.limits = r.limits || {}; if (r.user) await afterLogin(r.user); } catch { S.me = null; }
     if (code) { S.view = 'verify'; await doVerify(code); history.replaceState(null, '', location.pathname); }
     render();
   };

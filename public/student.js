@@ -2,7 +2,8 @@
 (function () {
   const UA = window.UA, { S, api, esc, fmt, val, toast } = UA;
   const LV = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة'];
-  const GOV = ['دمشق', 'ريف دمشق', 'حلب', 'حمص', 'حماة', 'اللاذقية', 'طرطوس', 'إدلب', 'درعا', 'السويداء', 'القنيطرة', 'دير الزور', 'الرقة', 'الحسكة', 'خارج سوريا'];
+  const GOV_DEFAULT = ['دمشق'];
+  const govs = () => (UA.S.limits && UA.S.limits.governorates) || GOV_DEFAULT;
   const SEM_LABEL = { 1: 'الفصل الأول', 2: 'الفصل الثاني' };
   const day = (t) => { try { return new Date(t).toLocaleDateString('ar-EG-u-nu-latn', { dateStyle: 'medium' }); } catch { return ''; } };
 
@@ -279,7 +280,7 @@
     const p = (T.profile && T.profile.profile) || {};
     sheet('تعديل معلومات الحساب', `<form id="acctform" class="m-form"><p class="m-lead">يمكنك تعديل بيانات الاتصال فقط. أما الاسم وبقية البيانات الشخصية فتُصحَّح من قسم شؤون الطلاب بالوثائق الرسمية.</p>
       <label>رقم الهاتف المحمول<input id="ac-phone" type="tel" dir="ltr" value="${esc(p.phone || '')}" required></label><label>البريد الإلكتروني<input id="ac-email" type="email" dir="ltr" value="${esc(p.email || '')}"></label>
-      <label>محافظة السكن<select id="ac-gov" required>${GOV.map((g) => `<option${g === p.governorate ? ' selected' : ''}>${g}</option>`).join('')}</select></label><label>المدينة / المنطقة<input id="ac-city" value="${esc(p.city || '')}" required maxlength="60"></label>
+      <label>محافظة السكن<select id="ac-gov" required>${govs().map((g) => `<option${g === p.governorate ? ' selected' : ''}>${g}</option>`).join('')}</select></label><label>المدينة / المنطقة<input id="ac-city" value="${esc(p.city || '')}" required maxlength="60"></label>
       <label>العنوان التفصيلي<input id="ac-addr" value="${esc(p.address || '')}" required maxlength="200"></label><label>هاتف آخر للطوارئ<input id="ac-emer" type="tel" dir="ltr" value="${esc(p.emergency_phone || '')}"></label>
       ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}<button class="m-btn" type="submit">حفظ</button></form>`);
   }

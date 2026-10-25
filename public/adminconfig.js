@@ -115,7 +115,7 @@
     B.site = r.site; UA.S.uni = /[\u0600-\u06FF]/.test(r.site.university) ? r.site.university : UA.S.uni; UA.render(); toast('حُفظت الإعدادات');
   };
   A.svnew = () => {
-    B.sv = { mode: 'new', code: '', label: '', label0: '', description: '', slaHours: 48, requiresAttachment: false, issuesDocument: true, enabled: true, builtin: false, unit: '', audience: 'student', category: '', instructions: '', slotsText: '', maxAttachments: 1, fields: [] };
+    B.sv = { mode: 'new', code: '', label: '', label0: '', description: '', slaHours: (UA.S.limits || {}).defaultSla || 48, requiresAttachment: false, issuesDocument: true, enabled: true, builtin: false, unit: '', audience: 'student', category: '', instructions: '', slotsText: '', maxAttachments: 1, fields: [] };
     UA.render(); window.scrollTo(0, 0);
   };
   A.svedit = (el, d) => { const s = B.services.find((x) => x.code === d.c); if (s) { B.sv = draftOf(s); UA.render(); window.scrollTo(0, 0); } };

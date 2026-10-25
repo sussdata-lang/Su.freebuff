@@ -30,11 +30,24 @@
     scan: '<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="M8 9v6M11 9v6M14 9v6M17 9v6"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
+    layers: '<path d="M12 3 3 7.5 12 12l9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>',
     out: '<path d="M15 4.5h4.5v15H15"/><path d="M10.5 8l-4 4 4 4M6.5 12h10"/>',
   };
   const ico = (n, s = 20) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICO[n] || ''}</svg>`;
-  const NAV_ICON = { desk: 'users', overview: 'grid', home: 'grid', guide: 'book', grades: 'chart', tx: 'file', affairs: 'users', dashboard: 'chart', academics: 'book', comms: 'news', exchange: 'upload', internal: 'file', corr: 'news', hr: 'users', import: 'upload', export: 'download', attendance: 'scan', admin: 'settings', access: 'shield', audit: 'file', verify: 'check' };
-  const PARENT = { site: 'admin', services: 'admin', academics: 'affairs' };
+  const NAV_ICON = { desk: 'users', overview: 'grid', home: 'grid', guide: 'book', grades: 'chart', tx: 'file', affairs: 'users', dashboard: 'chart', academics: 'book', comms: 'news', exchange: 'upload', internal: 'file', corr: 'news', hr: 'users', payroll: 'users', settings: 'settings', units: 'layers', import: 'upload', export: 'download', attendance: 'scan', admin: 'settings', access: 'shield', audit: 'file', verify: 'check' };
+  const PARENT = { site: 'admin', services: 'admin' };
+  /* مجموعات القائمة الجانبية: عناوين تعكس الوحدات السبع عشرة في وثيقة «نظام ERP جامعي متكامل» (5.1–5.17).
+     ترتيب viewsFor متجاور داخل المجموعة نفسها. */
+  const NAV_GROUP = {
+    desk: 'الرئيسية', overview: 'الرئيسية',
+    affairs: 'الطلاب والخدمات', internal: 'الطلاب والخدمات',
+    academics: 'الأكاديمي والامتحانات', attendance: 'الأكاديمي والامتحانات',
+    hr: 'الموارد البشرية والمراسلات', payroll: 'الموارد البشرية والمراسلات', corr: 'الموارد البشرية والمراسلات',
+    dashboard: 'التقارير والبيانات', exchange: 'التقارير والبيانات',
+    comms: 'التواصل والإشعارات',
+    admin: 'النواة والحوكمة', access: 'النواة والحوكمة', audit: 'النواة والحوكمة',
+    units: 'عن النظام', verify: 'عن النظام',
+  };
   const EXTRA_LABEL = { site: 'إعدادات الموقع', services: 'الخدمات' };
 
   /* ---------- أدوات ---------- */
@@ -166,16 +179,15 @@
       return k === 'affairs' && review ? `<small>${review}</small>` : (k === 'comms' && comp && comp.value ? `<small>${comp.value}</small>` : '');
     };
     const hasGroup = !o.views && views.some((v) => v[0] === 'affairs');
-    const inGroup = hasGroup && (S.view === 'affairs' || S.view === 'academics');
+    // «شؤون الطلاب» وحدها تعرض قائمة تبويباتها داخل مجموعتها؛ أما صفحات أخرى فتنتقل تبويباتها إلى القائمة (أعلاه)
+    const inGroup = hasGroup && S.view === 'affairs';
     document.body.classList.toggle('sx-grouped', !!inGroup);
     const subs = () => {
       const t = S.stTab === 'edit' ? 'list' : S.stTab;
       const it = [['affairs', 'requests', can('request:decide') ? 'سجل الطلبات' : 'الطلبات']];
       if (can('student:read')) it.push(['affairs', 'list', 'سجل الطلاب']);
       if (can('student:register')) it.push(['affairs', 'new', 'تسجيل طالب جديد']);
-      if (views.some((v) => v[0] === 'academics')) it.push(['academics', 'courses', 'دليل المواد'], ['academics', 'grades', 'جدول العلامات']);
-      const at = UA.acTab ? UA.acTab() : '';
-      return `<div class="sx-sub-list" role="group" aria-label="شؤون الطلاب">${it.map((x) => `<button data-sx="sub" data-v="${x[0]}" data-t="${x[1]}"${S.view === x[0] && (x[0] === 'affairs' ? t === x[1] : at === x[1]) ? ' aria-current="true"' : ''}>${esc(x[2])}</button>`).join('')}</div>`;
+      return `<div class="sx-sub-list" role="group" aria-label="شؤون الطلاب">${it.map((x) => `<button data-sx="sub" data-v="${x[0]}" data-t="${x[1]}"${S.view === x[0] && t === x[1] ? ' aria-current="true"' : ''}>${esc(x[2])}</button>`).join('')}</div>`;
     };
     // تبويبات الصفحة الداخلية تنتقل إلى القائمة الجانبية تحت عنوان الصفحة ولا تُكرَّر داخلها (كما في «شؤون الطلاب»)
     let sideSub = '';
@@ -189,7 +201,14 @@
         }
       }
     }
-    const nav = views.filter((v) => !(hasGroup && v[0] === 'academics')).map((v) => `<button data-act="${act}" data-v="${v[0]}"${activeKey === v[0] || (hasGroup && v[0] === 'affairs' && inGroup) ? ' aria-current="page"' : ''}>${ico(NAV_ICON[v[0]] || 'file')}<span>${esc(v[1])}</span>${badge(v[0])}${hasGroup && v[0] === 'affairs' ? `<em class="sx-caret${inGroup ? ' open' : ''}">${ico('chevron', 15)}</em>` : ''}</button>${hasGroup && v[0] === 'affairs' && inGroup ? subs() : ''}${sideSub && activeKey === v[0] ? sideSub : ''}`).join('');
+    // عناوين المجموعات تُدرج بين الأزرار داخل الشبكة نفسها، فتبقى الأزرار أبناء مباشرين لـ-.sx-nav (كما في اختبارات المتصفح)
+    let gLast = '';
+    const nav = views.map((v) => {
+      const g = o.views ? '' : (NAV_GROUP[v[0]] || '');   // بوابة الطالب تبقى قائمة مسطّحة بلا مجموعات
+      const head = g && g !== gLast ? `<div class="sx-gh" role="presentation">${esc(g)}</div>` : '';
+      if (g) gLast = g;
+      return head + `<button data-act="${act}" data-v="${v[0]}"${activeKey === v[0] || (hasGroup && v[0] === 'affairs' && inGroup) ? ' aria-current="page"' : ''}>${ico(NAV_ICON[v[0]] || 'file')}<span>${esc(v[1])}</span>${badge(v[0])}${hasGroup && v[0] === 'affairs' ? `<em class="sx-caret${inGroup ? ' open' : ''}">${ico('chevron', 15)}</em>` : ''}</button>${hasGroup && v[0] === 'affairs' && inGroup ? subs() : ''}${sideSub && activeKey === v[0] ? sideSub : ''}`;
+    }).join('');
     const uni = String(S.uni || ''), cut = uni.indexOf(' للعلوم');
     const brand1 = cut > 0 ? uni.slice(0, cut) : uni, brand2 = cut > 0 ? uni.slice(cut + 1) : 'نظام إدارة الجامعة';
     const role = S.me.roleLabel || UA.ROLE_LABEL[S.me.role] || '';
@@ -201,7 +220,7 @@
       <button class="sx-backdrop" data-sx="close" aria-label="إغلاق القائمة"></button>
       <aside class="sx-side" aria-label="القائمة الجانبية">
         <div class="sx-brand"><img src="/brand/crest.svg" alt="" width="42" height="48"><div><strong>${esc(brand1)}</strong><span>${esc(brand2)}</span></div><button class="sx-ib sx-close" data-sx="close" aria-label="إغلاق" style="color:#fff">${ico('close')}</button></div>
-        <div class="sx-navlabel">القائمة الرئيسية</div>
+        ${o.views ? '<div class="sx-navlabel">القائمة الرئيسية</div>' : ''}
         <nav class="sx-nav" aria-label="القائمة الرئيسية">${nav}</nav>
         ${help}
         <div class="sx-state"><i></i> النظام يعمل بشكل طبيعي</div>
