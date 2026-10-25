@@ -52,6 +52,27 @@ test('القائمة الجانبية: تبويبات الصفحات صارت ق
   }
 });
 
+test('وحدات النظام: القائمة مُجمَّعة على المجموعات والصفحة تفهرس الوحدات السبع عشرة', async (t) => {
+  if (!pw) return t.skip('Playwright غير متوفر');
+  // عناوين المجموعات: واحدة لكل مجموعة، والأزرار أبناء مباشرون لـ-.sx-nav
+  const gh = await page.locator('.sx-nav .sx-gh').allInnerTexts();
+  for (const g of ['الطلاب والخدمات', 'الأكاديمي والامتحانات', 'التقارير والبيانات', 'التواصل والإشعارات', 'النواة والحوكمة', 'عن النظام']) assert.ok(gh.includes(g), `مجموعة: ${g}`);
+  assert.equal(new Set(gh).size, gh.length, 'كل مجموعة عنوان واحد فقط');
+  const nav = await page.locator('.sx-nav > button').allInnerTexts();
+  assert.ok(nav.some((x) => x.includes('وحدات النظام')), 'مدخل «وحدات النظام»');
+  assert.ok(nav.some((x) => x.includes('المواد والعلامات')), 'المواد والعلامات صارت مدخلاً مستقلاً');
+  // صفحة الوحدات: 17 وحدة بأسمائها وحالتها
+  await go('units');
+  assert.equal(await page.locator('.sx-page [data-unit]').count(), 17, 'الوحدات السبع عشرة');
+  const txt = await page.locator('.sx-page').innerText();
+  for (const s of ['القبول والتسجيل', 'سجل الطالب', 'الامتحانات والعلامات', 'الموارد البشرية والرواتب', 'الجودة والاعتماد', 'ذكاء الأعمال والتقارير', 'مُنفَّذ', 'غير مبني']) assert.ok(txt.includes(s), s);
+  // انتقال من بطاقة وحدة إلى صفحتها المنفّذة
+  await page.locator('[data-unit="5.4"] [data-sx="sub"][data-v="academics"]').click();
+  await page.waitForTimeout(700);
+  assert.ok((await page.locator('.sx-crumbs').innerText()).includes('المواد والعلامات'), 'وحدة 5.4 تفتح دليل المواد');
+  assert.deepEqual(errs, []);
+});
+
 test('التسجيل بلا كاميرا: بطاقة موحّدة كاملة + بيانات إضافية + طباعة معزولة', async (t) => {
   if (!pw) return t.skip('Playwright غير متوفر');
   await go('affairs', 'new');
@@ -230,6 +251,37 @@ test('مكتبي: واجهة الموظف بمظهر إداري ثم تدريس�
   await page.evaluate(() => document.querySelector('[data-act="sdtab"][data-t="set"]').click());
   assert.ok(await page.$('#sdpw'));
   await page.evaluate(() => { UA.S.me.staffKind = 'admin'; UA.S.me.jobTitle = ''; UA.render(); });
+  assert.deepEqual(errs, []);
+});
+
+test('الإعدادات العامة: تبويب في الإدارة يعدّل علامة العملي ويظهر أثره في نموذج العلامات', async (t) => {
+  if (!pw) return t.skip('Playwright غير متوفر');
+  await page.evaluate(() => { document.getElementById('layer').innerHTML = ''; });
+  await go('admin');
+  await page.evaluate(() => document.querySelector('[data-act="atab"][data-t="general"]').click()); await page.waitForTimeout(600);
+  assert.ok(await page.$('.g-cards')); assert.match(await page.textContent('.g-cards'), /العلامات والنجاح/);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/general-index.png`, fullPage: true });
+  await page.evaluate(() => document.querySelector('[data-act="gtab"][data-t="grades"]').click());
+  assert.equal(await page.inputValue('#g-grades-practical_max'), '30');
+  await page.fill('#g-grades-practical_max', '40');
+  await page.evaluate(() => document.querySelector('#gform').requestSubmit()); await page.waitForTimeout(800);
+  assert.equal(await page.inputValue('#g-grades-practical_max'), '40');
+  assert.ok(await page.$('.g-item.chg'));
+  assert.equal(await page.evaluate(() => UA.S.limits.practicalMax), 40);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/general-grades.png`, fullPage: true });
+  await page.evaluate(() => document.querySelector('[data-act="gres"]').click()).catch(() => {});
+  assert.deepEqual(errs, []);
+});
+
+test('الموظفون والرواتب: واجهة الموارد البشرية تفتح مع نموذج موظف', async (t) => {
+  if (!pw) return t.skip('Playwright غير متوفر');
+  await page.evaluate(() => { document.getElementById('layer').innerHTML = ''; });
+  await go('payroll');
+  assert.match(await page.textContent('body'), /الموظفون/);
+  await page.evaluate(() => document.querySelector('[data-act="pynew"]').click()); await page.waitForTimeout(300);
+  assert.ok(await page.$('#pyemp'));
+  await page.evaluate(() => document.querySelector('[data-act="pytab"][data-t="leave"]').click()); await page.waitForTimeout(500);
+  assert.match(await page.textContent('body'), /إجازات الموظفين/);
   assert.deepEqual(errs, []);
 });
 
