@@ -24,7 +24,7 @@ const JPEG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgICAgMCAgIDAwMDBA
 
 test.before(async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-an-'));
-  app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
+  app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${app.server.address().port}`;
   app.db.prepare("INSERT OR REPLACE INTO site_settings (key, value) VALUES ('grades_workflow', 'off')").run();   // هذه الاختبارات لا تخص مراحل الاعتماد

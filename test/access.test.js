@@ -26,7 +26,7 @@ const unitId = (name) => app.db.prepare('SELECT id FROM org_units WHERE name = ?
 
 test.before(async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-ac-'));
-  app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
+  app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${app.server.address().port}`;
   const h = await hashPassword(PW, 1024);
@@ -38,7 +38,7 @@ test.after(async () => { await app.close(); });
 
 test('الحسابان الأساسيان: admin وauditor1 بكلمة المرور 1572690 ويعملان فوراً، وإعادة الضبط تفك القفل', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-seed-'));
-  const a2 = createApp({ dbPath: path.join(dir, 's.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
+  const a2 = await createApp({ dbPath: path.join(dir, 's.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
   await new Promise((r) => a2.server.listen(0, '127.0.0.1', r));
   const b2 = `http://127.0.0.1:${a2.server.address().port}`;
   try {

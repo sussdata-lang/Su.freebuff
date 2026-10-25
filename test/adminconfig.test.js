@@ -17,7 +17,7 @@ const login = async (u) => { app.limiter.hits.clear(); const r = await fetch(bas
 
 test.before(async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-cfg-'));
-  app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), logDir: path.join(dir, 'logs'), scryptN: 1024, port: 0 });
+  app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), logDir: path.join(dir, 'logs'), scryptN: 1024, port: 0 });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${app.server.address().port}`;
   const h = await hashPassword(PW, 1024);

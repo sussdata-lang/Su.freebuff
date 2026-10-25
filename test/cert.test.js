@@ -22,7 +22,7 @@ async function loginAs(u, p = PW) { app.limiter.hits.clear(); const r = await ap
 
 test.before(async () => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-cert-'));
-  app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
+  app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
   app.cfg.publicUrl = 'https://portal.example.sy';
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${app.server.address().port}`;

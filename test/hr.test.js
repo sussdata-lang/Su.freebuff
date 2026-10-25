@@ -38,7 +38,7 @@ async function loginAs(username, _app) {
 // Create a fresh test app (called in beforeEach)
 async function createTestApp() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-hr-'));
-  const _app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
+  const _app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), scryptN: 1024, port: 0 });
   await new Promise((r) => _app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${_app.server.address().port}`;
 

@@ -23,7 +23,7 @@ const api = async (m, u, body) => { const r = await fetch(base + u, { method: m,
 test.before(async () => {
   if (!pw) return;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-ui-'));
-  app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), logDir: path.join(dir, 'logs'), scryptN: 1024, port: 0, publicDir: path.resolve('public') });
+  app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), logDir: path.join(dir, 'logs'), scryptN: 1024, port: 0, publicDir: path.resolve('public') });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   base = `http://127.0.0.1:${app.server.address().port}`;
   app.db.prepare('INSERT INTO users (username, display_name, password_hash, role, created_at) VALUES (?,?,?,?,?)').run('admin', 'مدير', await hashPassword(PW, 1024), 'admin', Date.now());

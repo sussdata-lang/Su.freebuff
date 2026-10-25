@@ -8,7 +8,7 @@ import { checkReadiness } from '../server/services/readiness.js';
 
 const mk = async (over = {}) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uni-erp-rd-'));
-  const app = createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), logDir: path.join(dir, 'logs'), scryptN: 1024, port: 0, backupAuto: false, ...over });
+  const app = await createApp({ dbPath: path.join(dir, 't.db'), uploadDir: path.join(dir, 'up'), logDir: path.join(dir, 'logs'), scryptN: 1024, port: 0, backupAuto: false, ...over });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   return { app, dir };
 };
