@@ -49,22 +49,30 @@ window.UA = { views: {}, actions: {}, loaders: {}, forms: {}, reset() {}, studen
   function viewsFor(role) {
     if (role === 'student') return [['home', 'الرئيسية'], ['guide', 'دليل المواد'], ['grades', 'علاماتي'], ['news', 'الأخبار'], ['tx', 'معاملاتي']];
     // قوائم العاملين تُبنى من الصلاحيات الفعلية لا من اسم الدور، فتصلح للأدوار المخصّصة
+    // الترتيب: لوحة تحكم → الطلاب/الطلبات → الأكاديمي → الموارد البشرية → المراسلات → التقارير → الإدارة والحوكمة
     const v = [['desk', 'مكتبي'], ['overview', 'لوحة التحكم']];
+    // 1) الطلاب والطلبات (مفصول ومنّظم)
     if (can('request:read_all') || can('request:read_unit') || can('student:read') || can('student:register')) v.push(['affairs', can('student:read') || can('student:register') ? 'شؤون الطلاب' : 'الطلبات']);
     if (can('request:create_internal')) v.push(['internal', 'الطلبات الداخلية']);
+    // 2) الأكاديمي والامتحانات
     if (can('course:manage') || can('grade:manage') || can('faculty:manage')) v.push(['academics', 'المواد والعلامات']);
     if (can('attendance:manage')) v.push(['attendance', 'سجل القاعات']);
+    // 3) الموارد البشرية (مفصلة عن المراسلات)
     if (can('staffatt:self') || can('staffatt:manage')) v.push(['hr', 'الحضور والإجازات']);
     if (can('hr:manage')) v.push(['payroll', 'الموظفون والرواتب']);
+    // 4) المراسلات
     if (can('corr:use') || can('corr:read_all')) v.push(['corr', 'المراسلات']);
+    // 5) التقارير والبيانات
     if (can('stats:read')) v.push(['dashboard', 'الإحصاءات']);
     if (can('student:register') || can('course:manage') || can('grade:manage') || can('data:export') || can('request:import')) v.push(['exchange', 'الاستيراد والتصدير']);
     if (can('news:manage') || can('complaint:manage')) v.push(['comms', 'الأخبار والشكاوى']);
-    if (can('holds:manage') || can('rules:manage') || can('program:manage') || can('backup:manage') || can('settings:manage')) v.push(['admin', 'الإدارة']);
+    // 6) المشتريات والمالية (مجموعة مستقلة متجاورة)
+    if (can('procurement:read') || can('procurement:request') || can('procurement:manage') || can('procurement:stock') || can('procurement:assets')) v.push(['procurement', 'المشتريات والمخازن']);
+    if (can('finance:read') || can('finance:entry') || can('finance:fees') || can('finance:setup')) v.push(['finance', 'المالية والمحاسبة']);
+    // 7) الإدارة والحوكمة (مركزية: لوحة تحكم إدارية موحدة)
+    if (can('holds:manage') || can('rules:manage') || can('program:manage') || can('backup:manage') || can('settings:manage')) v.push(['admin', 'لوحة الإدارة']);
     if (can('user:manage') || can('role:manage')) v.push(['access', 'الحسابات والصلاحيات']);
     if (can('audit:read')) v.push(['audit', 'التدقيق']);
-    if (can('finance:read') || can('finance:entry') || can('finance:fees') || can('finance:setup')) v.push(['finance', 'المالية والمحاسبة']);
-    if (can('procurement:read') || can('procurement:request') || can('procurement:manage') || can('procurement:stock') || can('procurement:assets')) v.push(['procurement', 'المشتريات والمخازن']);
     return [...v, ['units', 'وحدات النظام'], ['verify', 'التحقق العام']];
   }
 

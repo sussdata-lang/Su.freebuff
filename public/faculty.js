@@ -4,15 +4,22 @@
 (function () {
   const UA = window.UA, { S, api, esc, val, toast } = UA;
   const F = { list: null, options: null, summary: null, q: '', rank: '', status: '', modal: null, assign: null, courses: null };
-  const LV = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة'];
+  const DEF_LV = ['الأولى', 'الثانية', 'الثالثة', 'الرابعة', 'الخامسة', 'السادسة', 'السابعة'];
+  const getLV = () => ((UA.S.limits && UA.S.limits.levels) || DEF_LV);
+  const LV = DEF_LV;
   const prevReset = UA.reset;
   UA.reset = () => { if (prevReset) prevReset(); F.list = null; F.options = null; F.summary = null; F.q = F.rank = F.status = ''; F.modal = null; F.assign = null; F.courses = null; };
 
   async function loadMembers() {
     const q = new URLSearchParams();
     if (F.q) q.set('q', F.q); if (F.rank) q.set('rank', F.rank); if (F.status) q.set('status', F.status);
-    const r = await api('GET', '/api/faculty' + (q.toString() ? '?' + q : ''));
-    F.list = r.members; F.options = r.options; F.summary = r.summary;
+    try {
+      const r = await api('GET', '/api/faculty' + (q.toString() ? '?' + q : ''));
+      F.list = r.members; F.options = r.options; F.summary = r.summary;
+    } catch (e) {
+      if (F.list === null) { F.list = []; F.options = { ranks: [], statuses: {}, units: [] }; F.summary = { total: 0, active: 0, hours: 0, unassigned: 0 }; }
+      throw e;
+    }
   }
   const opts = (list, sel, all) => (all ? `<option value="">${all}</option>` : '') + list.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(sel) ? ' selected' : ''}>${esc(l)}</option>`).join('');
   const pill = (st) => `<span class="pill ${st === 'active' ? 'p-approved' : st === 'leave' ? 'p-review' : 'p-rejected'}">${esc((F.options.statuses && F.options.statuses[st]) || st)}</span>`;
@@ -30,6 +37,7 @@
   }
 
   function membersTab() {
+    if (!F.list || !F.options) return '<section class="card"><p class="hint">جارٍ تحميل أعضاء هيئة التدريس…</p></section>';
     const s = F.summary, o = F.options;
     return `<section class="card"><div class="tool-row"><h2 style="margin:0">أعضاء هيئة التدريس <span class="small">(${s.total} عضو)</span></h2><button class="btn pri" data-act="fmnew">＋ عضو جديد</button></div>
       <p class="hint">السجل الأساسي لأعضاء هيئة التدريس ودرجاتهم وأقسامهم. العبء التدريسي يُحسب من المقررات المسندة (بالمستوى النشط)، وإسناد مقرر يجعل اسم العضو هو «المدرّس» فيه.</p>
@@ -45,7 +53,8 @@
 
   /* ---------- النافذون: نموذج العضو + إسناد المقررات ---------- */
   function formModal() {
-    const m = F.modal.edit ? F.list.find((x) => x.id === F.modal.edit) : null, o = F.options;
+    const m = (F.modal && F.modal.edit) ? (F.list || []).find((x) => x.id === F.modal.edit) : null, o = F.options;
+    if (!o || !o.ranks) return '<h2 id="fmttl">جارٍ التحميل…</h2><p class="hint">تعذر تحميل القوائم.</p><div class="actions"><button class="btn" type="button" data-act="fmclose">إغلاق</button></div>';
     const v = (k, d = '') => esc(m ? m[k] ?? d : d);
     const hire = m && m.hireDate ? new Date(m.hireDate).toISOString().slice(0, 10) : '';
     return `<h2 id="fmttl">${m ? 'تعديل: ' + esc(m.name) : 'عضو هيئة تدريس جديد'}</h2>
@@ -87,20 +96,26 @@
   }
   UA.facultyView = membersTab;
 
-  // تغليف محمّل وأحداث التبويب بعد تسجيلهما في staff.js
+  // تغليف محمّل وأحداث التبويب بعد تسجيلهما في staff.js — لا يُسقط واجهة المواد والعلامات عند فشل الهيئة التدريسية
   const prevLoad = UA.loaders.academics;
   UA.loaders.academics = async () => {
     try { await prevLoad(); } catch (e) { if (!(e.status === 403 && !UA.can('course:manage') && !UA.can('grade:manage'))) throw e; }
-    if (UA.acTab && UA.acTab() === 'members') await loadMembers();
+    if (UA.acTab && UA.acTab() === 'members') {
+      try { await loadMembers(); } catch (e) { if (e.status !== 403) toast(e.message); }
+    }
   };
   const prevActab = UA.actions.actab;
   UA.actions.actab = async (el, d) => {
-    if (d && d.t === 'members') { await loadMembers(); await prevActab(el, d); return; }   // نحمّل قبل الرسم
+    if (d && d.t === 'members') {
+      try { await loadMembers(); } catch (e) { if (e.status !== 403) toast(e.message); }
+      await prevActab(el, d);
+      return;
+    }
     await prevActab(el, d);
   };
 
   /* ---------- الإجراءات والنماذج ---------- */
-  const run = async (fn) => { try { await fn(); } catch (e) { if (!e.status) throw e; toast(e.message); } };
+  const run = async (fn) => { try { await fn(); } catch (e) { if (!e.status) { console.error(e); toast(String(e.message || e)); return; } toast(e.message); } };
   const refreshBody = () => { const el = document.getElementById('fm-body'); if (el && F.list) el.innerHTML = memberRows(); };
   Object.assign(UA.actions, {
     fmnew: () => { F.assign = null; F.modal = { edit: null }; UA.render(); window.scrollTo(0, 0); },
@@ -133,18 +148,28 @@
   });
   Object.assign(UA.forms, {
     fmform: () => run(async () => {
+      if (!F.options || !F.options.ranks || !F.options.ranks.length) { toast('الدرجات العلمية غير محمّلة — حاول تحديث الصفحة'); return; }
       const hire = val('fm-hire');
-      const body = { name: val('fm-name'), rank: val('fm-rank'), unitId: val('fm-unit') ? Number(val('fm-unit')) : null,
+      const rank = val('fm-rank');
+      if (!rank) { toast('اختر الدرجة العلمية'); return; }
+      const name = val('fm-name').trim();
+      if (name.length < 2) { toast('الاسم يجب أن يكون حرفين على الأقل'); return; }
+      const body = { name, rank, unitId: val('fm-unit') ? Number(val('fm-unit')) : null,
         specialty: val('fm-spec'), email: val('fm-mail'), phone: val('fm-phone'), officeHours: val('fm-office'),
-        officeLocation: val('fm-loc'), hireDate: hire ? Date.parse(hire + 'T00:00:00') : null, status: val('fm-status'), notes: val('fm-notes') };
-      const edit = F.modal.edit;
+        officeLocation: val('fm-loc'), hireDate: hire ? Date.parse(hire + 'T00:00:00') : null, status: val('fm-status') || 'active', notes: val('fm-notes') };
+      const edit = F.modal && F.modal.edit;
       if (edit) await api('PUT', '/api/faculty/' + edit, body); else await api('POST', '/api/faculty', body);
-      F.modal = null; await loadMembers(); UA.render(); toast(edit ? 'حُفظ التعديل' : 'أُضيف العضو');
+      F.modal = null; await loadMembers(); UA.render(); toast(edit ? 'حُفظ التعديل — تم بنجاح ✅' : 'أُضيف العضو إلى هيئة التدريس بنجاح ✅');
     }),
   });
+  let searchTimer = null;
   document.addEventListener('input', (e) => {
     const t = e.target; if (!t || !t.dataset || !t.dataset.fmq || !F.list) return;
-    F.q = t.value; refreshBody();
+    F.q = t.value; clearTimeout(searchTimer);
+    // حقل البحث المحلي (تصفية فورية بلا طلب خادم) — مثبط قصير لتخفيف إعادة الرسم
+    searchTimer = setTimeout(() => { refreshBody(); }, 120);
+    // تحديث سريع للعرض الحالي بلا انتظار
+    refreshBody();
   });
   document.addEventListener('change', async (e) => {
     const t = e.target; if (!t || !t.dataset || !t.dataset.fm) return;

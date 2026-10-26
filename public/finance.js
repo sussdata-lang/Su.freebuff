@@ -705,6 +705,53 @@
   }
 
   /* ============================================================
+     قيد الرواتب: من سجل الرواتب في الموارد البشرية إلى قيد محاسبي مُرحَّل
+  ============================================================ */
+  async function renderPayroll(el) {
+    const me = window.UA?.S?.me ?? {};
+    const canPost = me.role === 'admin' || (me.permissions ?? []).includes('finance:post');
+    el.innerHTML = '<p class="fin-count">جارٍ التحميل…</p>';
+    let d;
+    try { d = await api('GET', '/api/finance/payroll-months'); } catch (e) { el.innerHTML = `<p class="error">${escHtml(e.message)}</p>`; return; }
+    const stat = (m) => m.entry
+      ? (m.entry.reversed ? '<span class="badge badge-default">معكوس</span>' : `<span class="badge badge-success">مُرحَّل <span class="ltr">${escHtml(m.entry.no || '')}</span></span>`)
+      : (m.employees ? '<span class="badge badge-warning">بلا قيد</span>' : '<span class="badge badge-default">لا رواتب</span>');
+    el.innerHTML = `
+      <p class="fin-count">المصدر: رواتب «الموارد البشرية» (آخر راتب مسجَّل لكل موظف فعّال حتى نهاية الشهر). القيد: مدين «رواتب وأجور» / دائن «رواتب وأجور مستحقة» بالإجمالي، ولا يُنشأ مرتين للشهر نفسه.${canPost ? '' : ' (إنشاء القيد يتطلب صلاحية الترحيل).'}</p>
+      <table class="tbl"><thead><tr><th>الشهر</th><th>عدد الموظفين</th><th>الإجمالي</th><th>بلا راتب مسجَّل</th><th>الحالة</th><th></th></tr></thead>
+      <tbody>${d.months.map((m) => `<tr${m.employees ? '' : ' class="row-muted"'}>
+        <td class="ltr">${m.month}</td><td>${m.employees}</td><td class="ltr">${fmt(m.total)}</td>
+        <td>${m.missingSalary ? `<span class="g-warn">${m.missingSalary}</span>` : '—'}</td><td>${stat(m)}</td>
+        <td><button class="btn btn-sm" data-pv="${m.month}">معاينة</button>${canPost && !m.entry && m.employees ? ` <button class="btn btn-sm btn-primary" data-mk="${m.month}">إنشاء القيد</button>` : ''}</td></tr>`).join('')}</tbody></table>
+      <div id="fin-pr-msg"></div>`;
+    const msg = $('#fin-pr-msg', el);
+    const make = async (month, total) => {
+      if (!confirm(`إنشاء وترحيل قيد رواتب ${month} بمبلغ ${fmt(total)}؟`)) return false;
+      try {
+        const r = await api('POST', '/api/finance/payroll-entry', { month });
+        await renderPayroll(el);
+        const m2 = $('#fin-pr-msg', el); if (m2) m2.innerHTML = `<p class="g-ok">تم إنشاء القيد ${escHtml(r.entry?.no || '')} لشهر ${month} (${r.employees} موظف، الإجمالي ${fmt(r.total)}).</p>`;
+        return true;
+      } catch (e) { msg.innerHTML = `<p class="error">${escHtml(e.message)}</p>`; return false; }
+    };
+    $$('[data-mk]', el).forEach((b) => b.onclick = () => { const m = d.months.find((x) => x.month === b.dataset.mk); make(m.month, m.total); });
+    $$('[data-pv]', el).forEach((b) => b.onclick = async () => {
+      let p; try { p = await api('GET', '/api/finance/payroll-preview?month=' + encodeURIComponent(b.dataset.pv)); } catch (e) { msg.innerHTML = `<p class="error">${escHtml(e.message)}</p>`; return; }
+      const dlg = document.createElement('dialog'); dlg.className = 'fin-dlg';
+      dlg.innerHTML = `<h2>رواتب شهر <span class="ltr">${p.month}</span></h2>
+        ${p.missing.length ? `<p class="g-warn">تنبيه: ${p.missing.length} موظف فعّال بلا راتب مسجَّل ولن يدخلوا في القيد: ${p.missing.map((x) => escHtml(x.name)).join('، ')}</p>` : ''}
+        <div style="max-height:50vh;overflow:auto"><table class="tbl"><thead><tr><th>الرقم</th><th>الموظف</th><th>الوظيفة</th><th>الوحدة</th><th>الراتب</th></tr></thead>
+        <tbody>${p.rows.map((r) => `<tr><td class="ltr">${escHtml(r.employeeNo)}</td><td>${escHtml(r.name)}</td><td>${escHtml(r.position)}</td><td>${escHtml(r.unitName)}</td><td class="ltr">${fmt(r.amount)}</td></tr>`).join('') || '<tr><td colspan="5">لا رواتب مسجَّلة لهذا الشهر.</td></tr>'}</tbody>
+        <tfoot><tr class="tbl-total"><td colspan="4">الإجمالي</td><td class="ltr">${fmt(p.total)}</td></tr></tfoot></table></div>
+        <div class="dlg-actions">${canPost && !p.entry && p.rows.length ? '<button class="btn btn-primary" data-do>إنشاء وترحيل القيد</button>' : ''}<button class="btn btn-cancel" data-x>إغلاق</button></div>`;
+      document.body.append(dlg); dlg.showModal();
+      const close = () => { dlg.close(); dlg.remove(); };
+      dlg.querySelector('[data-x]').onclick = close; dlg.addEventListener('cancel', () => setTimeout(() => dlg.remove(), 0));
+      const go = dlg.querySelector('[data-do]'); if (go) go.onclick = async () => { if (await make(p.month, p.total)) close(); };
+    });
+  }
+
+  /* ============================================================
      تجميع التبويبات الرئيسية
   ============================================================ */
   const TABS = [
@@ -713,6 +760,7 @@
     { key: 'accounts', label: 'دليل الحسابات',  icon: '🌳', render: renderAccounts, perm: 'finance:setup' },
     { key: 'reports',  label: 'التقارير',        icon: '📈', render: renderReports,  perm: 'finance:read' },
     { key: 'fees',     label: 'رسوم الطلاب',     icon: '💰', render: renderFees,     perm: 'finance:fees' },
+    { key: 'payroll',  label: 'قيد الرواتب',      icon: '💼', render: renderPayroll,  perm: 'finance:read' },
     { key: 'setup',    label: 'الإعداد',          icon: '⚙️',  render: renderSetup,   perm: 'finance:setup' },
     { key: 'myfees',   label: 'رسومي',            icon: '🧾', render: renderMyFees,  perm: 'fees:read_own', studentOnly: true },
   ];
