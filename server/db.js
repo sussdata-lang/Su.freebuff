@@ -8,8 +8,13 @@ const MIGRATIONS = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migr
 export function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+  // WAL + فهارس أداء: قراءة متزامنة مع كتابة، وحد زمني للانتظار عند التزاحم
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA cache_size = -20000; PRAGMA temp_store = MEMORY;');
+  // تحليل الإحصاءات مرة واحدة عند أول فتح لقاعدة ملف (يسرّع اختيار المخطط الاستعلامي)
+  try { db.exec('ANALYZE;'); } catch {}
   migrate(db);
+  // تحليل إضافي بعد الترحيلات لخطة استعلام حديثة
+  try { db.exec('ANALYZE;'); } catch {}
   return db;
 }
 
