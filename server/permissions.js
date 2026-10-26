@@ -50,6 +50,20 @@ export const PERMISSION_CATALOG = [
     ['settings:manage', 'الإعدادات العامة: تعديل القيم والحدود والقوائم التي يعمل بها النظام'],
     ['hr:manage',    'إدارة الموارد البشرية والرواتب (الموظفون، الرواتب، الإجازات، العقود)'],
   ] },
+  { group: 'المالية والمحاسبة', items: [
+    ['finance:read',  'عرض القيود والتقارير والأرصدة والبيانات المالية'],
+    ['finance:entry', 'إنشاء القيود اليومية وسندات القبض والصرف وتعديلها وحذفها (مسودات)'],
+    ['finance:post',  'ترحيل القيود وعكسها (الترحيل يُقفل القيد ويؤثر في الأرصدة)'],
+    ['finance:setup', 'إعداد دليل الحسابات والسنوات والعملات ومراكز الكلفة والأطراف'],
+    ['finance:fees',  'إدارة أنواع الرسوم واستحقاقات الطلاب ومدفوعاتهم وإيصالاتهم'],
+  ] },
+  { group: 'المشتريات والمخازن والأصول', items: [
+    ['procurement:read',    'عرض المخازن والأصناف وطلبات الشراء والأصول'],
+    ['procurement:request', 'إنشاء طلبات الشراء وإرسالها (لكل الموظفين)'],
+    ['procurement:manage',  'اعتماد طلبات الشراء وإنشاء أوامر التوريد وإدارتها'],
+    ['procurement:stock',   'استلام التوريد وصرف المخزون وإدارة الحركة المخزنية'],
+    ['procurement:assets',  'إدارة الأصول الثابتة وحركاتها (نقل، صيانة، استبعاد)'],
+  ] },
 ].map((g) => ({ group: g.group, items: g.items.map(([key, label]) => ({ key, label })) }));
 
 export const ASSIGNABLE = new Set(PERMISSION_CATALOG.flatMap((g) => g.items.map((i) => i.key)));
@@ -69,6 +83,7 @@ export const STUDENT_PERMISSION_LABELS = {
   'request:create': 'تقديم الطلبات والمعاملات', 'request:read_own': 'عرض طلباته ومتابعتها', 'document:read_own': 'عرض وثائقه الصادرة',
   'profile:read_own': 'عرض ملفه الشخصي', 'profile:update_own': 'تعديل بياناته الشخصية المسموحة', 'course:read_own': 'عرض دليل مواده',
   'grade:read_own': 'عرض علاماته المعتمدة', 'complaint:create': 'إرسال الشكاوى',
+  'fees:read_own': 'عرض رسومه المالية وكشف حسابه',
 };
 export const PERMISSIONS = {
   student: STUDENT,

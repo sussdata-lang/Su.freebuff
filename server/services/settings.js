@@ -62,6 +62,14 @@ export const SCHEMA = [
   { key: 'display', label: 'العرض', desc: 'أحجام القوائم في الواجهة.', items: [
     { key: 'display.news_limit', label: 'عدد الأخبار المعروضة', type: 'int', default: 30, min: 5, max: 200 },
   ] },
+  { key: 'finance', label: 'المالية والمحاسبة', desc: 'إعدادات الإيصالات والقيود والعرض المحاسبي.', items: [
+    { key: 'finance.receipt_prefix', label: 'بادئة رقم الإيصال', type: 'text', default: 'RCP', min: 2, max: 8, ascii: true, hint: 'أحرف لاتينية كبيرة؛ تطبَّق على الإيصالات الجديدة.' },
+    { key: 'finance.receipt_title', label: 'عنوان الإيصال (رأس PDF)', type: 'text', default: 'إيصال استلام رسوم', min: 5, max: 80 },
+    { key: 'finance.receipt_footer', label: 'تذييل الإيصال', type: 'text', default: 'شكراً لسدادكم في الوقت المحدد', min: 0, max: 120 },
+    { key: 'finance.separate_poster', label: 'فصل المهام: لا يرحّل القيد من أنشأه', type: 'bool', default: false, hint: 'عند تفعيله يُلزم بأن يرحّل شخص مختلف عن منشئ القيد.' },
+    { key: 'finance.default_due_days', label: 'أيام الاستحقاق الافتراضية للرسوم', type: 'int', default: 30, min: 0, max: 365, unit: 'يوماً' },
+    { key: 'finance.decimals', label: 'منازل عشرية في العرض', type: 'int', default: 2, min: 0, max: 4, hint: 'لا يؤثر في التخزين (يُخزَّن بدقة 1/100).' },
+  ] },
 ];
 
 export const ITEMS = Object.fromEntries(SCHEMA.flatMap((t) => t.items.map((i) => [i.key, { ...i, tab: t.key }])));

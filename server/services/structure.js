@@ -32,7 +32,7 @@ export const STRUCTURE = [
   { code: 'hr', name: 'الموارد البشرية', kind: 'department', parent: U, module: 'وحدة الموارد البشرية', label: 'مسؤول الموارد البشرية',
     desc: 'التوظيف، العقود، الحضور، الإجازات، الرواتب، الأداء، التدريب.', perms: INBOX },
   { code: 'finance', name: 'المالية والحسابات', kind: 'department', parent: U, module: 'وحدة المالية', label: 'مسؤول المالية والحسابات',
-    desc: 'الرسوم، التحصيل، الصرف، الميزانية، المحاسبة.', perms: ['holds:manage', 'student:read', 'stats:read', ...INBOX] },
+    desc: 'الرسوم، التحصيل، الصرف، الميزانية، المحاسبة والقيود المحاسبية.', perms: ['holds:manage', 'student:read', 'stats:read', 'finance:read', 'finance:entry', 'finance:post', 'finance:setup', 'finance:fees', ...INBOX] },
   { code: 'procure', name: 'المشتريات والمخازن', kind: 'department', parent: U, module: 'وحدة المشتريات والأصول', label: 'مسؤول المشتريات والمخازن',
     desc: 'طلبات الشراء، العقود، الموردون، المخزون.', perms: INBOX },
   { code: 'admin_aff', name: 'الشؤون الإدارية', kind: 'department', parent: U, module: 'وحدة الشؤون الإدارية', label: 'مسؤول الشؤون الإدارية',

@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import { Router, HttpError, sendRaw, sendStream, SECURITY_HEADERS as SEC } from './http.js';
+import { registerFinance } from './services/finance/routes.js';
+import { registerProcurement } from './services/procurement/routes.js';
 import { login, logout, publicUser, changePassword } from './services/auth.js';
 import { listStaff, createUser, updateUser, setUserActive, resetUserPassword, deleteUser } from './services/useradmin.js';
 import { getTranscriptTemplate, setTranscriptTemplate, getSite, saveSite, universityName } from './services/site.js';
@@ -39,7 +41,7 @@ import { recentLogs } from './lib/logger.js';
 
 const need = (ctx, perm) => { if (!ctx.user.can(perm)) throw new HttpError(403, 'لا تملك صلاحية هذا الإجراء.', 'forbidden'); };
 
-export function buildRouter(deps) {
+export async function buildRouter(deps) {
   const { db, cfg, limiter } = deps;
   const r = new Router();
   const cookie = (token, maxAge) => `sid=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAge}${cfg.cookieSecure ? '; Secure' : ''}`;
@@ -406,6 +408,11 @@ export function buildRouter(deps) {
   r.add('PUT', '/api/admin/settings', (c) => { need(c, 'rules:manage'); c.json(200, { site: saveSite(deps, c.user, c.body, c.ip) }); });
   r.add('PUT', '/api/admin/rules/:id', (c) => { need(c, 'rules:manage'); updateRule(deps, c.user, c.params.id, c.body, c.ip); c.json(200, { ok: true }); });
   r.add('DELETE', '/api/admin/rules/:id', (c) => { need(c, 'rules:manage'); deleteRule(deps, c.user, c.params.id, c.ip); c.json(200, { ok: true }); });
+
+  // وحدة المالية والمحاسبة
+  await registerFinance(r, deps, {});
+  // وحدة المشتريات والمخازن والأصول
+  await registerProcurement(r, deps);
 
   return r;
 }
