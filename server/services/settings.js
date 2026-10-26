@@ -189,6 +189,7 @@ export function publicLimits(db) {
   return {
     passMark: getSetting(db, 'grades.pass_mark'), totalMax: getSetting(db, 'grades.total_max'), practicalMax: getSetting(db, 'grades.practical_max'),
     maxCourseHours: getSetting(db, 'academic.max_course_hours'), defaultCourseHours: getSetting(db, 'academic.default_course_hours'),
+    levels: getSetting(db, 'academic.levels'),
     passwordMin: getSetting(db, 'security.password_min'), defaultSla: getSetting(db, 'requests.default_sla_hours'),
     maxAttachmentMb: getSetting(db, 'requests.max_attachment_mb'), governorates: getSetting(db, 'students.governorates'),
   };

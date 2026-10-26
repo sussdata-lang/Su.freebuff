@@ -74,7 +74,7 @@ export async function registerFinance(r, deps, { writeXlsx }) {
 
   /* ---- مراكز الكلفة ---- */
   r.add('GET', '/api/finance/cost-centers', fin('finance:read', () => {
-      C.ready(db); return { costCenters: db.prepare('SELECT cc.*, u.name unit_name FROM fin_cost_centers cc LEFT JOIN org_units u ON u.id=cc.unit_id ORDER BY cc.code').all() };
+    C.ready(db); return { costCenters: db.prepare('SELECT cc.*, u.name unit_name FROM fin_cost_centers cc LEFT JOIN org_units u ON u.id=cc.unit_id ORDER BY cc.code').all() };
   }));
   r.add('POST', '/api/finance/cost-centers', finC('finance:setup', (c, b) => {
     C.ready(db);
@@ -139,6 +139,8 @@ export async function registerFinance(r, deps, { writeXlsx }) {
   r.add('POST', '/api/finance/payments', finC('finance:fees', (c, b) => F.createPayment(deps, c.user, b, c.ip)));
   r.add('POST', '/api/finance/payments/:id/void', fin('finance:fees', (c, b) => F.voidPayment(deps, c.user, c.params.id, b, c.ip)));
   r.add('GET', '/api/finance/student-statement/:id', fin('finance:fees', (c) => F.studentStatement(deps, c.params.id)));
+  r.add('GET', '/api/finance/payroll-months', fin('finance:read', () => F.payrollMonths(deps)));
+  r.add('GET', '/api/finance/payroll-preview', fin('finance:read', (_c, _b, q) => F.payrollPreview(deps, q.month)));
   r.add('POST', '/api/finance/payroll-entry', fin('finance:post', (c, b) => F.payrollEntry(deps, c.user, b, c.ip)));
   r.add('POST', '/api/finance/years/:id/close', fin('finance:setup', (c, b) => F.closeYear(deps, c.user, c.params.id, c.ip)));
 

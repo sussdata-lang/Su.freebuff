@@ -18,13 +18,21 @@ const text = (v, label, { min = 1, max = 60 } = {}) => {
 
 function readInput(db, b, cur = null) {
   const name = text(b?.name ?? cur?.name, 'الاسم', { min: 2, max: 80 });
-  const rank = String(b?.rank ?? cur?.rank ?? '').trim();
-  if (!ranksOf(db).includes(rank) && rank !== cur?.rank) throw bad('اختر الدرجة العلمية من القائمة.', 'rank');
+  let rank = String(b?.rank ?? cur?.rank ?? '').trim();
+  const allowedRanks = ranksOf(db);
+  if (!rank && !cur) {
+    // إنشاء جديد بدون تحديد رتبة: استخدم أول رتبة متاحة لتجنب انهيار الواجهة
+    if (allowedRanks.length) rank = allowedRanks[0];
+    else throw bad('لا توجد درجات علمية معرّفة في الإعدادات؛ عرّف واحدة أولاً من الإعدادات العامة.', 'rank');
+  }
+  if (rank && !allowedRanks.includes(rank) && rank !== cur?.rank) throw bad('اختر الدرجة العلمية من القائمة.', 'rank');
   const unitId = b?.unitId === undefined ? cur?.unit_id ?? null : (b.unitId ? Number(b.unitId) : null);
   if (unitId !== null && !db.prepare('SELECT 1 FROM org_units WHERE id = ?').get(unitId)) throw bad('القسم / الإدارة غير موجود.', 'unitId');
-  const email = b?.email === undefined ? cur?.email ?? null : (String(b.email).trim() || null);
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || (email && email.length > 100)) throw bad('البريد الإلكتروني غير صالح.', 'email');
-  const phone = b?.phone === undefined ? cur?.phone ?? null : (String(b.phone).trim() || null);
+  const emailRaw = b?.email === undefined ? cur?.email ?? null : (String(b.email).trim() || null);
+  const email = emailRaw && emailRaw.trim() ? emailRaw.trim() : null;
+  if (email && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 100)) throw bad('البريد الإلكتروني غير صالح.', 'email');
+  const phoneRaw = b?.phone === undefined ? cur?.phone ?? null : (String(b.phone).trim() || null);
+  const phone = phoneRaw && phoneRaw.trim() ? phoneRaw.trim() : null;
   if (phone && !/^[\d+()\s-]{5,20}$/.test(phone)) throw bad('رقم الهاتف غير صالح.', 'phone');
   const status = String(b?.status ?? cur?.status ?? 'active');
   if (!STATUS[status]) throw bad('حالة العضو غير صالحة.', 'status');
@@ -51,8 +59,12 @@ const view = (r) => ({ id: r.id, name: r.name, rank: r.rank, unitId: r.unit_id, 
   courses: r.courses, hours: r.hours, activeCourses: r.active_courses });
 
 export function options(db) {
-  return { ranks: ranksOf(db), statuses: STATUS,
-    units: db.prepare("SELECT id, name FROM org_units WHERE active = 1 AND kind != 'university' ORDER BY name").all() };
+  try {
+    return { ranks: ranksOf(db), statuses: STATUS,
+      units: db.prepare("SELECT id, name FROM org_units WHERE active = 1 AND kind != 'university' ORDER BY name").all() };
+  } catch {
+    return { ranks: ['أستاذ','أستاذ مشارك','أستاذ مساعد','محاضر','معيد'], statuses: STATUS, units: [] };
+  }
 }
 
 const likeEsc = (s) => '%' + s.replace(/[\\%_]/g, '\\$&') + '%';

@@ -137,24 +137,54 @@ export function studentStatement({ db }, studentId) {
   return { student: { id: stu.id, name: stu.display_name }, charges, payments, totalCharged: fromMinor(totalCharged), totalPaid: fromMinor(totalPaid), balance: fromMinor(balance), side: balance > 0 ? 'مستحق' : balance < 0 ? 'رصيد دائن' : 'صفر' };
 }
 
-/* --------- قيد الرواتب --------- */
+/* --------- قيد الرواتب ---------
+   مصدر البيانات: سجل الرواتب في الموارد البشرية (hr_salaries: مبلغ بالليرة الكاملة لكل موظف وتاريخ سريان).
+   راتب الشهر = آخر راتب مسجَّل لكل موظف فعّال/في إجازة (غير منتهي الخدمة) سريانه حتى نهاية الشهر، ممن عُيّن قبل نهاية الشهر.
+   لا يوجد جدول استقطاعات في النظام؛ لذلك القيد: مدين رواتب وأجور / دائن رواتب مستحقة بالإجمالي. */
+const monthOk = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(m ?? ''));
+function payrollForMonth(db, month) {
+  const [y, m] = month.split('-').map(Number);
+  const endTs = Date.UTC(y, m, 1) - 1;
+  const emps = db.prepare(`SELECT e.id, e.employeeNo, e.name, e.position, e.status, u.name unitName,
+      (SELECT s.amount FROM hr_salaries s WHERE s.employee_id=e.id AND s.effective_at<=? ORDER BY s.effective_at DESC, s.id DESC LIMIT 1) amount
+    FROM hr_employees e LEFT JOIN org_units u ON u.id=e.unit_id
+    WHERE e.status IN ('active','on_leave') AND e.hireDate<=? ORDER BY e.employeeNo`).all(endTs, `${month}-31`);
+  const rows = emps.filter((e) => e.amount != null && e.amount > 0).map((e) => ({ employeeId: e.id, employeeNo: e.employeeNo, name: e.name, position: e.position || '', unitName: e.unitName || '', status: e.status, amount: e.amount }));
+  const missing = emps.filter((e) => !(e.amount > 0)).map((e) => ({ employeeId: e.id, employeeNo: e.employeeNo, name: e.name }));
+  return { rows, missing, total: rows.reduce((t, r) => t + r.amount, 0) };
+}
+const payrollEntryOf = (db, month) => {
+  const e = db.prepare('SELECT id, no, status, reversed_by FROM fin_entries WHERE source=? AND reversal_of IS NULL').get(`payroll:${month}`);
+  return e ? { id: e.id, no: e.no, status: e.status, reversed: !!e.reversed_by } : null;
+};
+export function payrollMonths({ db }) {
+  ready(db);
+  const now = new Date(); const out = [];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const p = payrollForMonth(db, month);
+    out.push({ month, employees: p.rows.length, missingSalary: p.missing.length, total: p.total, entry: payrollEntryOf(db, month) });
+  }
+  return { months: out };
+}
+export function payrollPreview({ db }, month) {
+  ready(db);
+  if (!monthOk(month)) throw bad('الشهر غير صالح (YYYY-MM).');
+  const p = payrollForMonth(db, month);
+  return { month, ...p, entry: payrollEntryOf(db, month) };
+}
 export function payrollEntry(deps, actor, input, ip) {
   const { db } = deps; ready(db);
-  const month = String(input?.month ?? ''); if (!/^\d{4}-\d{2}$/.test(month)) throw bad('الشهر غير صالح (YYYY-MM).');
-  if (db.prepare("SELECT 1 FROM fin_entries WHERE source=? AND reversal_of IS NULL").get(`payroll:${month}`)) throw bad(`قيد الرواتب لشهر ${month} موجود مسبقاً.`, 409, 'conflict');
-  const rows = db.prepare(`SELECT COALESCE(SUM(gross),0) g, COALESCE(SUM(deductions),0) d, COALESCE(SUM(net),0) n FROM hr_salaries WHERE month=? AND status='approved'`).get(month);
-  if (!rows || !rows.g) throw bad('لا توجد رواتب معتمدة لهذا الشهر.');
-  const gross = rows.g, ded = rows.d, net = rows.n;
+  const month = String(input?.month ?? ''); if (!monthOk(month)) throw bad('الشهر غير صالح (YYYY-MM).');
+  if (payrollEntryOf(db, month)) throw bad(`قيد الرواتب لشهر ${month} موجود مسبقاً.`, 409, 'conflict');
+  const p = payrollForMonth(db, month);
+  if (!p.rows.length || !p.total) throw bad('لا توجد رواتب مسجَّلة لموظفين فعّالين في هذا الشهر.');
   const salExp = sysAccount(db, 'salaries_exp'), salPay = sysAccount(db, 'salaries_pay');
-  const lines = [{ accountId: salExp.id, debit: fromMinor(gross) }, { accountId: salPay.id, credit: fromMinor(net) }];
-  if (ded > 0) {
-    const dedAcc = db.prepare("SELECT id FROM fin_accounts WHERE system_key='deductions'").get();
-    if (dedAcc) lines.push({ accountId: dedAcc.id, credit: fromMinor(ded) });
-    else lines[1] = { accountId: salPay.id, credit: fromMinor(gross) };
-  }
-  const entry = createEntry(deps, actor, { day: `${month}-01`, description: `قيد رواتب ${month}`, lines, post: true }, ip, { type: 'PR', source: `payroll:${month}`, post: true, system: true });
+  const lines = [{ accountId: salExp.id, debit: p.total }, { accountId: salPay.id, credit: p.total }];
+  const entry = createEntry(deps, actor, { day: `${month}-01`, description: `قيد رواتب ${month} (${p.rows.length} موظف)`, lines, post: true }, ip, { type: 'PR', source: `payroll:${month}`, post: true, system: true });
   audit(db, actor, 'قيد رواتب', month, ip);
-  return { entry };
+  return { entry, employees: p.rows.length, total: p.total, missingSalary: p.missing.length };
 }
 
 /* --------- إغلاق السنة المالية --------- */
